@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libclang-dev \
     cmake \
-    curl
+    curl \
+    protobuf-compiler
 
 WORKDIR /app
 COPY . .
