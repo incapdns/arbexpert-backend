@@ -163,7 +163,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
-          .service(web::resource("/ws/").route(web::get().to(ws_index)))
+          .service(web::resource("/ws").route(web::get().to(ws_index)))
           .service((index, no_params))
           .service(
             web::resource("/resource2/index.html")
