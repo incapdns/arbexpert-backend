@@ -162,7 +162,7 @@ async fn main() -> std::io::Result<()> {
 
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
-Z
+
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
