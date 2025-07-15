@@ -141,6 +141,12 @@ async fn ws_index(req: web::HttpRequest) -> Result<web::HttpResponse, web::Error
 
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
+  unsafe {
+    std::env::set_var("RUST_LOG", "trace"); // ou "debug", "info"
+  }
+  env_logger::init();
+
+
   default_provider()
     .install_default()
     .expect("Failed to install default CryptoProvider");
@@ -157,7 +163,7 @@ async fn main() -> std::io::Result<()> {
 
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
-
+Z
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
