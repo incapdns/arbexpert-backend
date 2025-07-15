@@ -6,6 +6,7 @@ fn main() {
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
   let mut cfg = prost_build::Config::new();
+  cfg.protoc_arg("--experimental_allow_proto3_optional");
   cfg.out_dir(&out_dir);
 
   let protos = fs::read_dir("src/proto/mexc")
