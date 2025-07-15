@@ -1,6 +1,14 @@
 # Etapa 1: Compilar o projeto
 FROM rust:1.88-trixie as builder
 
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    cmake \
+    curl
+
 WORKDIR /appr
 COPY . .
 
