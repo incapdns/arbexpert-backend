@@ -53,7 +53,7 @@ impl MexcExchange {
     headers.insert("Host".to_string(), "www.mexc.com".to_string());
     headers.insert("User-Agent".to_string(), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36".to_string());
     headers.insert("Accept".to_string(), "*/*".to_string());
-    headers.insert("Accept-Encoding".to_string(), "gzip, deflate, br".to_string());
+    headers.insert("Accept-Encoding".to_string(), "gzip, deflate".to_string());
 
     let response = client
       .request(
