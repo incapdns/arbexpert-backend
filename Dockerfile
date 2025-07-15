@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     cmake \
     curl
 
-WORKDIR /appr
+WORKDIR /app
 COPY . .
 
 RUN cargo build --release
