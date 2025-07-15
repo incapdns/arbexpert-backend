@@ -1,4 +1,5 @@
 use crate::{
+  exchange::mexc::MexcExchange,
   worker::{
     commands::{Request, StartArbitrage},
     state::GlobalState,
@@ -8,7 +9,12 @@ use crate::{
 use async_channel::unbounded;
 use futures::TryStreamExt;
 use ntex::{
-  fn_service, http::HttpService, server::Server, service::fn_factory_with_config, util::BytesMut, web::{self, middleware, App, HttpRequest, HttpResponse}, Service
+  Service, fn_service,
+  http::HttpService,
+  server::Server,
+  service::fn_factory_with_config,
+  util::BytesMut,
+  web::{self, App, HttpRequest, HttpResponse, middleware},
 };
 use rustls::crypto::aws_lc_rs::default_provider;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -82,6 +88,13 @@ async fn index_async(_: HttpRequest) -> &'static str {
 #[web::get("/")]
 async fn no_params() -> &'static str {
   "Hello world!\r\n"
+}
+
+#[web::get("/symbols")]
+async fn symbols() -> String {
+  let mexc = MexcExchange::new().await;
+  let symbols: HashMap<String, exchange::mexc::public::symbols::SymbolEntry> = mexc.get_symbols();
+  serde_json::to_string(&symbols).unwrap()
 }
 
 async fn on_worker_start(global_state: Arc<GlobalState>) -> Result<(), String> {
@@ -164,7 +177,7 @@ async fn main() -> std::io::Result<()> {
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
           .service(web::resource("/ws").route(web::get().to(ws_index)))
-          .service((index, no_params))
+          .service((index, no_params, symbols))
           .service(
             web::resource("/resource2/index.html")
               .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))

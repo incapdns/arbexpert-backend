@@ -1,6 +1,7 @@
 use crate::base::http::generic::{DynamicIterator, HttpBody, HttpClient};
-use ntex::http::{Client, Method, client::ClientResponse};
-use std::{error::Error, pin::Pin};
+use ntex::http::{client::{ClientBuilder, ClientResponse}, Client, Method, Version};
+use rustls::RootCertStore;
+use std::{error::Error, pin::Pin, time::Duration};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -50,13 +51,15 @@ impl HttpClient for NtexHttpClient {
     uri: String,
     mut headers: DynamicIterator<'t, (&'t dyn AsRef<str>, &'t dyn AsRef<str>)>,
     mut body: Option<Box<dyn HttpBody + 'b>>,
-  ) -> Pin<Box<dyn Future<Output = Result<Self::Response, Box<dyn std::error::Error>>> + 't>>
-  {
+  ) -> Pin<Box<dyn Future<Output = Result<Self::Response, Box<dyn std::error::Error>>> + 't>> {
     let client = self.client.clone();
 
     Box::pin(async move {
       let method = method.parse::<Method>()?;
-      let mut req = client.request(method, uri);
+
+      let mut req = client.request(method, uri) 
+        .version(Version::HTTP_2)
+        .timeout(Duration::from_secs(7));
 
       for (k, v) in &mut headers {
         req = req.header(k.as_ref(), v.as_ref());

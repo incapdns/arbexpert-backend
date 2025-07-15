@@ -4,8 +4,8 @@
     {
       "type": "cppvsdbg",
       "request": "launch",
-      "name": "Debug ccxt-rs.exe (cppvsdbg)",
-      "program": "${workspaceFolder}/target/debug/ccxt-rs.exe",
+      "name": "Debug arbexpert.exe (cppvsdbg)",
+      "program": "${workspaceFolder}/target/debug/arbexpert.exe",
       "args": [],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

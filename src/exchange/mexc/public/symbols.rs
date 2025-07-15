@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::{BTreeMap, HashMap}, sync::{LazyLock, Mutex}};
 
 use crate::{base::http::generic::DynamicIterator, exchange::mexc::MexcExchange, from_headers};
@@ -18,14 +18,17 @@ pub struct SymbolItem {
   pub cd: String,  // item ID
   pub vn: String,  // item name
   pub mcd: String, // symbol ID
+  #[serde(alias = "in")]
+  pub image: String, // symbol ID
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Item {
   pub id: String,
+  pub image: String
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SymbolEntry {
   pub id: String,
   pub items: BTreeMap<String, Item>,
@@ -46,19 +49,24 @@ impl MexcExchange {
       .utils
       .http_client;
 
-    let headers: HashMap<String, String> = HashMap::new();
+    let mut headers: HashMap<String, String> = HashMap::new();
+    headers.insert("Host".to_string(), "www.mexc.com".to_string());
+    headers.insert("User-Agent".to_string(), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36".to_string());
+    headers.insert("Accept".to_string(), "*/*".to_string());
+    headers.insert("Accept-Encoding".to_string(), "gzip, deflate, br".to_string());
 
-    let mut response = client
+    let response = client
       .request(
         "GET".into(),
         "https://www.mexc.com/api/platform/spot/market-v2/web/symbolsV2".into(),
         from_headers!(headers), // no headers
         None,
       )
-      .await?;
+      .await;
 
-    let body = response
+    let body = response?
       .body()
+      .limit(10 * 1024 * 1024)
       .await
       .map_err(|e| format!("Failed to read body: {}", e))?;
 
@@ -74,6 +82,7 @@ impl MexcExchange {
           item.vn.clone(),
           Item {
             id: item.cd.clone(),
+            image: item.image.clone()
           },
         );
       }
@@ -90,5 +99,9 @@ impl MexcExchange {
     *lock = symbols.clone();
 
     Ok(symbols)
+  }
+
+  pub fn get_symbols(&self) -> HashMap<String, SymbolEntry> {
+    self.public.symbols.clone()
   }
 }
