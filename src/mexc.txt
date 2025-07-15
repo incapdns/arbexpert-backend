@@ -1,0 +1,25 @@
+apt update -y
+apt install -y python3-apt python3-dateutil
+apt install -y libparted libparted-dev
+apt install -y libsystemd-dev pkg-config
+apt install -y unattended-upgrades
+apt install -y libgirepository1.0-dev
+apt install -y libparted-dev
+apt install -y python3-parted
+apt install -y libdbus-1-dev
+apt install -y ffmpeg
+apt install -y libavcodec-dev libavformat-dev libavfilter-dev libavdevice-dev libswscale-dev
+
+pip install "testresources>=2.0.1"
+pip install rpds-py
+pip install -r requirements.txt
+
+cd src
+python main.py
+
+Senha root: PsoquqZ9Ed479
+
+
+13:00 - 14:00
+1h
+

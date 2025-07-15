@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "cppvsdbg",
+      "request": "launch",
+      "name": "Debug ccxt-rs.exe (cppvsdbg)",
+      "program": "${workspaceFolder}/target/debug/ccxt-rs.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}
