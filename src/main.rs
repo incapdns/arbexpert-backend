@@ -146,7 +146,6 @@ async fn main() -> std::io::Result<()> {
   }
   env_logger::init();
 
-
   default_provider()
     .install_default()
     .expect("Failed to install default CryptoProvider");
