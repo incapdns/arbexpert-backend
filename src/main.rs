@@ -162,20 +162,24 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
 
     // Prepara assets spot
     for asset in assets.spot.values() {
-      symbol_map.entry(asset.symbol.clone()).or_default().push((
-        asset,
-        MarketType::Spot,
-        exchange_name.clone(),
-      ));
+      if asset.quote == "USDT" {
+        symbol_map.entry(asset.base.clone()).or_default().push((
+          asset,
+          MarketType::Spot,
+          exchange_name.clone(),
+        ));
+      }
     }
 
     // Prepara assets futuro
     for asset in assets.future.values() {
-      symbol_map.entry(asset.symbol.clone()).or_default().push((
-        asset,
-        MarketType::Future,
-        exchange_name.clone(),
-      ));
+      if asset.quote == "USDT" {
+        symbol_map.entry(asset.base.clone()).or_default().push((
+          asset,
+          MarketType::Future,
+          exchange_name.clone(),
+        ));
+      }
     }
   }
 
@@ -300,7 +304,7 @@ async fn on_worker_start(global_state: Arc<GlobalState>) -> Result<(), String> {
 
 async fn ws_service(
   sink: web::ws::WsSink,
-  state: web::types::State<Arc<GlobalState>>
+  state: web::types::State<Arc<GlobalState>>,
 ) -> Result<
   impl Service<web::ws::Frame, Response = Option<web::ws::Message>, Error = std::io::Error>,
   web::Error,
@@ -331,13 +335,17 @@ async fn ws_service(
 }
 
 async fn ws_index(
-  req: web::HttpRequest, 
-  state: web::types::State<Arc<GlobalState>>
+  req: web::HttpRequest,
+  state: web::types::State<Arc<GlobalState>>,
 ) -> Result<web::HttpResponse, web::Error> {
-  web::ws::start(req, fn_factory_with_config(move|sink| {
-    let state = state.clone();
-    ws_service(sink, state)
-  })).await
+  web::ws::start(
+    req,
+    fn_factory_with_config(move |sink| {
+      let state = state.clone();
+      ws_service(sink, state)
+    }),
+  )
+  .await
 }
 
 #[ntex::main]
