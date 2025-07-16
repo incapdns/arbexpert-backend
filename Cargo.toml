@@ -9,11 +9,11 @@ lto = true
 opt-level = 2
 
 [dependencies]
-async-tungstenite = "0.29.1"
+async-tungstenite = "0.30.0"
 async-tls = "0.13.0"
 futures-io = "0.3.31"
 futures-util = "0.3.31"
-rustls = { version = "0.23.28", default-features = false, features = ["std", "aws_lc_rs"] }
+rustls = { version = "0.23.29", default-features = false, features = ["std", "aws_lc_rs"] }
 webpki-roots = "1.0.1"
 url = "2.5.4"
 serde = { version = "1.0.219", features = ["derive"] }
