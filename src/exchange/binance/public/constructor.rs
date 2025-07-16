@@ -35,7 +35,7 @@ impl BinanceExchange {
     };
 
     let _ = result.sync_time().await;
-    let a = result.load_assets().await;
+    let _ = result.load_assets().await;
 
     result
   }
