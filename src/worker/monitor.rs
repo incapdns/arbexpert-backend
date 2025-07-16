@@ -86,9 +86,9 @@ async fn spawn_live_calc(
       snapshot.future_ask > zero && snapshot.future_bid > zero;
 
     if need_notification {
-      let notification = serde_json::to_string(snapshot).unwrap();
+      let notification = serde_json::to_string(snapshot);
 
-      if let Ok(json) = serde_json::to_string(&notification) {
+      if let Ok(json) = notification {
         let _ = state.ws_tx.broadcast(json).await;
       }
     }
