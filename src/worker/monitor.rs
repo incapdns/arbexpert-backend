@@ -15,6 +15,7 @@ pub struct Reenter {
   pub symbol: String,
   pub arbitrage: Arc<Arbitrage>,
 }
+
 async fn spawn_live_calc(
   exchange: Rc<BinanceExchange>,
   symbol: String,
