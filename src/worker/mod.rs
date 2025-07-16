@@ -28,8 +28,10 @@ async fn process_request(request: Request, binance: Rc<BinanceExchange>) {
 pub async fn worker_loop(
   worker_id: WorkerId,
   rx: Receiver<Request>,
-  global_state: Arc<GlobalState>,
+  _: Arc<GlobalState>,
 ) -> Result<(), Box<dyn Error>> {
+  println!("{} started !", worker_id);
+
   let binance = BinanceExchange::new().await;
   let binance = Rc::new(binance);
 
