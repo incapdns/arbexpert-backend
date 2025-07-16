@@ -391,7 +391,7 @@ async fn main() -> std::io::Result<()> {
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
 
-  let (mut ws_tx, mut ws_rx) = async_broadcast::broadcast(100);
+  let (mut ws_tx, mut ws_rx) = async_broadcast::broadcast(10000);
 
   ntex::rt::spawn(async move {
     loop {
