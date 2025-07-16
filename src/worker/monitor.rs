@@ -29,14 +29,22 @@ async fn spawn_live_calc(
     let (spot_ask, spot_bid, future_ask, future_bid) = {
       let book = order_book.borrow();
       let get_price = |side: &BTreeMap<Decimal, Decimal>| {
-        side
+        let result =side
           .iter()
           .next()
           .map(|(p, _)| p.clone())
-          .unwrap_or(zero.clone())
+          .unwrap_or(zero.clone());
+
+        if result == zero {
+          println!("\n\n\nDe matar ne!!!!!\n\n\n");
+        }
+
+        result
       };
 
       if symbol.contains(':') {
+        snapshot.debug_future_done = true;
+
         (
           snapshot.spot_ask.clone(),
           snapshot.spot_bid.clone(),
@@ -44,6 +52,8 @@ async fn spawn_live_calc(
           get_price(&book.bids),
         )
       } else {
+        snapshot.debug_spot_done = true;
+
         (
           get_price(&book.asks),
           get_price(&book.bids),
@@ -80,13 +90,13 @@ async fn spawn_live_calc(
     snapshot.future_ask = future_ask;
     snapshot.future_bid = future_bid;
 
-    let not_first = need_notification && 
+    let not_first = 
       snapshot.spot_ask > zero && snapshot.spot_bid > zero &&
       snapshot.future_ask > zero && snapshot.future_bid > zero;
 
     need_notification = need_notification && not_first;
 
-    if !not_first {
+    if !not_first && snapshot.debug_future_done && snapshot.debug_spot_done {
       println!("First {}", symbol);
     }
 

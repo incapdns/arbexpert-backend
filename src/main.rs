@@ -117,6 +117,8 @@ pub struct ArbitrageSnaphot {
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal,
+  pub debug_spot_done: bool,
+  pub debug_future_done: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -233,6 +235,8 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_bid: dec!(0),
             future_ask: dec!(0),
             future_bid: dec!(0),
+            debug_spot_done: false,
+            debug_future_done: false
           }),
         }));
       }
@@ -378,7 +382,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
