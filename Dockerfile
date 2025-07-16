@@ -11,6 +11,13 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler
 
 WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+
+RUN cargo build --release || true
+
 COPY . .
 
 RUN cargo build --release
