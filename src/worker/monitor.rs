@@ -80,9 +80,15 @@ async fn spawn_live_calc(
     snapshot.future_ask = future_ask;
     snapshot.future_bid = future_bid;
 
-    need_notification = need_notification && 
+    let not_first = need_notification && 
       snapshot.spot_ask > zero && snapshot.spot_bid > zero &&
       snapshot.future_ask > zero && snapshot.future_bid > zero;
+
+    need_notification = need_notification && not_first;
+
+    if !not_first {
+      println!("First {}", symbol);
+    }
 
     if need_notification {
       let notification = serde_json::to_string(snapshot);
