@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for StartMonitor {
         Arc::new(Arbitrage {
           spot: input.spot,
           future: input.future,
-          snaphot: UnsafeCell::new(ArbitrageSnaphot {
+          snapshot: UnsafeCell::new(ArbitrageSnaphot {
             entry_percent: dec!(0),
             exit_percent: dec!(0),
             spot_ask: dec!(0),

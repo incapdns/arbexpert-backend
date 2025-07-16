@@ -106,7 +106,7 @@ pub struct Arbitrage {
   pub spot: Asset,   // Spot de uma exchange
   pub future: Asset, // Futuro de outra exchange
   #[serde(with = "unsafe_cell_abr")]
-  pub snaphot: UnsafeCell<ArbitrageSnaphot>,
+  pub snapshot: UnsafeCell<ArbitrageSnaphot>,
 }
 
 mod unsafe_cell_abr {
@@ -202,7 +202,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         vec_mut.push(Arc::new(Arbitrage {
           spot: (*spot).clone(),
           future: (*future).clone(),
-          snaphot: UnsafeCell::new(ArbitrageSnaphot {
+          snapshot: UnsafeCell::new(ArbitrageSnaphot {
             entry_percent: dec!(0),
             exit_percent: dec!(0),
             spot_ask: dec!(0),
