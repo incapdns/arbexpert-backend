@@ -1,5 +1,5 @@
 use crate::{
-  base::exchange::assets::{Asset, Assets, MarketType},
+  base::exchange::assets::{Asset, MarketType},
   exchange::{binance::BinanceExchange, mexc::MexcExchange},
   worker::{
     commands::{Request, StartArbitrage, StartMonitor},
@@ -9,6 +9,7 @@ use crate::{
 };
 use async_channel::unbounded;
 use futures::{TryStreamExt, join};
+use mimalloc::MiMalloc;
 use ntex::{
   Service, fn_service,
   http::HttpService,
@@ -23,11 +24,16 @@ use rustls::crypto::aws_lc_rs::default_provider;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-  cell::UnsafeCell, collections::{BTreeMap, HashMap}, net::SocketAddr, sync::{
-    atomic::{AtomicU32, Ordering}, Arc, Mutex
-  }, time::Duration, vec
+  cell::UnsafeCell,
+  collections::{BTreeMap, HashMap},
+  net::SocketAddr,
+  sync::{
+    Arc, Mutex, RwLock,
+    atomic::{AtomicBool, AtomicU32, Ordering},
+  },
+  time::Duration,
+  vec,
 };
-use mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -43,7 +49,7 @@ async fn start_arbitrage(
   _: HttpRequest,
   symbol: web::types::Path<String>,
   mut payload: web::types::Payload,
-  data: web::types::State<Arc<GlobalState>>,
+  state: web::types::State<Arc<GlobalState>>,
 ) -> HttpResponse {
   let mut body = BytesMut::new();
 
@@ -61,18 +67,18 @@ async fn start_arbitrage(
   let symbol = symbol.into_inner().replace("-", "/");
 
   let worker_id = {
-    let mut map = data.symbol_map.lock().unwrap();
+    let mut map = state.symbol_map.lock().unwrap();
     if let Some(&id) = map.get(&symbol) {
       id
     } else {
-      let id = data.next_worker.fetch_add(1, Ordering::Relaxed);
+      let id = state.next_worker.fetch_add(1, Ordering::Relaxed);
       map.insert(symbol.clone(), id);
       id
     }
   };
 
   let tx = {
-    let channels = data.worker_channels.lock().unwrap();
+    let channels = state.worker_channels.lock().unwrap();
     channels.get(&worker_id).cloned()
   };
 
@@ -86,7 +92,11 @@ async fn start_arbitrage(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ArbitrageResult {
+pub struct ArbitrageSnaphot {
+  pub spot_ask: Decimal,
+  pub spot_bid: Decimal,
+  pub future_ask: Decimal,
+  pub future_bid: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal,
 }
@@ -96,16 +106,16 @@ pub struct Arbitrage {
   pub spot: Asset,   // Spot de uma exchange
   pub future: Asset, // Futuro de outra exchange
   #[serde(with = "unsafe_cell_abr")]
-  pub result: UnsafeCell<ArbitrageResult>,
+  pub snaphot: UnsafeCell<ArbitrageSnaphot>,
 }
 
 mod unsafe_cell_abr {
   use serde::{Deserialize, Deserializer, Serialize, Serializer};
   use std::cell::UnsafeCell;
 
-  use crate::ArbitrageResult;
+  use crate::ArbitrageSnaphot;
 
-  pub fn serialize<S>(cell: &UnsafeCell<ArbitrageResult>, serializer: S) -> Result<S::Ok, S::Error>
+  pub fn serialize<S>(cell: &UnsafeCell<ArbitrageSnaphot>, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
@@ -113,11 +123,11 @@ mod unsafe_cell_abr {
     inner.serialize(serializer)
   }
 
-  pub fn deserialize<'de, D>(deserializer: D) -> Result<UnsafeCell<ArbitrageResult>, D::Error>
+  pub fn deserialize<'de, D>(deserializer: D) -> Result<UnsafeCell<ArbitrageSnaphot>, D::Error>
   where
     D: Deserializer<'de>,
   {
-    let val = ArbitrageResult::deserialize(deserializer)?;
+    let val = ArbitrageSnaphot::deserialize(deserializer)?;
     Ok(UnsafeCell::new(val))
   }
 }
@@ -128,7 +138,15 @@ async fn setup_exchanges() -> Vec<BinanceExchange> {
   vec![a]
 }
 
-async fn cross_assets_all_exchanges(data: web::types::State<Arc<GlobalState>>) {
+async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) {
+  if state
+    .started
+    .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+    .is_err()
+  {
+    return;
+  }
+
   let mut arbitrages = HashMap::new();
 
   // Instancia todas as exchanges
@@ -184,9 +202,13 @@ async fn cross_assets_all_exchanges(data: web::types::State<Arc<GlobalState>>) {
         vec_mut.push(Arc::new(Arbitrage {
           spot: (*spot).clone(),
           future: (*future).clone(),
-          result: UnsafeCell::new(ArbitrageResult {
+          snaphot: UnsafeCell::new(ArbitrageSnaphot {
             entry_percent: dec!(0),
             exit_percent: dec!(0),
+            spot_ask: dec!(0),
+            spot_bid: dec!(0),
+            future_ask: dec!(0),
+            future_bid: dec!(0),
           }),
         }));
       }
@@ -197,25 +219,32 @@ async fn cross_assets_all_exchanges(data: web::types::State<Arc<GlobalState>>) {
 
   for (key, items) in &arbitrages {
     let worker_id = {
-      let mut map = data.symbol_map.lock().unwrap();
+      let mut map = state.symbol_map.lock().unwrap();
       if let Some(&id) = map.get(key) {
         id
       } else {
-        let id = data.next_worker.fetch_add(1, Ordering::Relaxed) % num_cpus::get() as u32;
+        let id = state.next_worker.fetch_add(1, Ordering::Relaxed) % num_cpus::get() as u32;
         map.insert(key.clone(), id);
         id
       }
     };
 
+    let mut arbitrages_mut = state.arbitrages.write().unwrap();
+    for item in items.iter() {
+      arbitrages_mut.push(item.clone());
+    }
+
     let tx = {
-      let channels = data.worker_channels.lock().unwrap();
+      let channels = state.worker_channels.lock().unwrap();
       channels.get(&worker_id).cloned()
     };
 
     if let Some(tx) = tx {
-      let _ = tx.send(Request::StartMonitor(StartMonitor {
-        items: items.clone()
-      })).await;
+      let _ = tx
+        .send(Request::StartMonitor(StartMonitor {
+          items: items.clone(),
+        }))
+        .await;
     }
 
     if i % 7 == 0 {
@@ -270,11 +299,21 @@ async fn on_worker_start(global_state: Arc<GlobalState>) -> Result<(), String> {
 }
 
 async fn ws_service(
-  _: web::ws::WsSink,
+  sink: web::ws::WsSink,
+  state: web::types::State<Arc<GlobalState>>
 ) -> Result<
   impl Service<web::ws::Frame, Response = Option<web::ws::Message>, Error = std::io::Error>,
   web::Error,
 > {
+  let mut rx = state.ws_tx.new_receiver();
+  let sink_clone = sink.clone();
+
+  ntex::rt::spawn(async move {
+    while let Ok(msg) = rx.recv().await {
+      let _ = sink_clone.send(web::ws::Message::Text(msg.into())).await;
+    }
+  });
+
   let service = fn_service(move |frame| {
     let response = match frame {
       web::ws::Frame::Text(text) => Some(web::ws::Message::Text(
@@ -291,8 +330,14 @@ async fn ws_service(
   Ok(service)
 }
 
-async fn ws_index(req: web::HttpRequest) -> Result<web::HttpResponse, web::Error> {
-  web::ws::start(req, fn_factory_with_config(ws_service)).await
+async fn ws_index(
+  req: web::HttpRequest, 
+  state: web::types::State<Arc<GlobalState>>
+) -> Result<web::HttpResponse, web::Error> {
+  web::ws::start(req, fn_factory_with_config(move|sink| {
+    let state = state.clone();
+    ws_service(sink, state)
+  })).await
 }
 
 #[ntex::main]
@@ -314,11 +359,16 @@ async fn main() -> std::io::Result<()> {
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
 
+  let (ws_tx,_) = async_broadcast::broadcast(10000);
+
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
     next_worker: AtomicU32::new(0),
-    last_id: AtomicU32::new(0)
+    last_id: AtomicU32::new(0),
+    arbitrages: Arc::new(RwLock::new(vec![])),
+    started: AtomicBool::new(false),
+    ws_tx,
   });
 
   let worker_global_state = global_state.clone();

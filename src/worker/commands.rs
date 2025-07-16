@@ -4,7 +4,7 @@ use std::{cell::UnsafeCell, sync::Arc};
 use rust_decimal::{Decimal, dec};
 use serde::{Deserialize, Serialize};
 
-use crate::{Arbitrage, ArbitrageResult};
+use crate::{Arbitrage, ArbitrageSnaphot};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Credentials {
@@ -59,9 +59,13 @@ impl<'de> Deserialize<'de> for StartMonitor {
         Arc::new(Arbitrage {
           spot: input.spot,
           future: input.future,
-          result: UnsafeCell::new(ArbitrageResult {
+          snaphot: UnsafeCell::new(ArbitrageSnaphot {
             entry_percent: dec!(0),
             exit_percent: dec!(0),
+            spot_ask: dec!(0),
+            spot_bid: dec!(0),
+            future_ask: dec!(0),
+            future_bid: dec!(0),
           }),
         })
       })
