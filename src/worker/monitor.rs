@@ -54,14 +54,14 @@ async fn spawn_live_calc(
       }
     };
 
-    let new_entry_percent = if snapshot.spot_ask != zero {
-      ((snapshot.future_bid - snapshot.spot_ask) / snapshot.spot_ask) * dec!(100)
+    let new_entry_percent = if spot_ask != zero {
+      ((future_bid - spot_ask) / spot_ask) * dec!(100)
     } else {
       dec!(0)
     };
 
-    let new_exit_percent = if snapshot.future_ask != zero {
-      ((snapshot.spot_bid - snapshot.future_ask) / snapshot.future_ask) * dec!(100)
+    let new_exit_percent = if future_ask != zero {
+      ((spot_bid - future_ask) / future_ask) * dec!(100)
     } else {
       dec!(0)
     };
@@ -75,6 +75,11 @@ async fn spawn_live_calc(
 
     snapshot.entry_percent = new_entry_percent;
     snapshot.exit_percent = new_exit_percent;
+
+    snapshot.spot_ask = spot_ask;
+    snapshot.spot_bid = spot_bid;
+    snapshot.future_ask = future_ask;
+    snapshot.future_bid = future_bid;
 
     if need_notification {
       let parsed_symbol = symbol.split_once(':').map_or(symbol.as_str(), |(s, _)| s);
@@ -94,7 +99,7 @@ async fn spawn_live_calc(
   }
 
   Reenter {
-    exchange: Rc::clone(&exchange),
+    exchange,
     symbol,
     arbitrage: arbitrage_cl,
   }
