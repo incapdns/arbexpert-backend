@@ -35,8 +35,8 @@ use std::{
   vec,
 };
 
-//#[global_allocator]
-//static GLOBAL: MiMalloc = MiMalloc;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 pub mod arbitrage;
 pub mod base;
