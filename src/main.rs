@@ -1,11 +1,9 @@
 use crate::{
-  base::exchange::assets::{Asset, MarketType},
-  exchange::{binance::BinanceExchange, mexc::MexcExchange},
-  worker::{
+  base::exchange::{assets::{Asset, MarketType}, Exchange}, exchange::{binance::BinanceExchange, mexc::MexcExchange}, utils::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
-  },
+  }
 };
 use async_channel::unbounded;
 use futures::{TryStreamExt, join};
@@ -41,8 +39,9 @@ static GLOBAL: MiMalloc = MiMalloc;
 pub mod arbitrage;
 pub mod base;
 pub mod exchange;
-pub mod test;
+pub mod utils;
 pub mod worker;
+pub mod test;
 
 #[web::post("/arbitrage/{symbol}/start")]
 async fn start_arbitrage(
@@ -150,12 +149,6 @@ mod unsafe_cell_abr {
   }
 }
 
-async fn setup_exchanges() -> Vec<BinanceExchange> {
-  let (a,) = join!(BinanceExchange::new(),);
-
-  vec![a]
-}
-
 async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) {
   if state
     .started
@@ -176,7 +169,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
   for exchange in &exchanges {
     let exchange_name = exchange.name(); // ou `exchange.to_string()` dependendo da trait
 
-    let assets = exchange.public.assets.as_ref().unwrap();
+    let assets = exchange.assets().unwrap();
 
     // Prepara assets spot
     for asset in assets.spot.values() {

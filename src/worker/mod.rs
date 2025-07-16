@@ -2,6 +2,8 @@ use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::base::exchange::Exchange;
+use crate::utils::setup_exchanges;
 use crate::worker::state::WorkerId;
 use crate::{
   exchange::binance::BinanceExchange,
@@ -17,11 +19,11 @@ pub mod commands;
 pub mod monitor;
 pub mod state;
 
-async fn process_request(request: Request, binance: Rc<BinanceExchange>, state: Arc<GlobalState>) {
+async fn process_request(request: Request, exchanges: &Vec<Box<dyn Exchange>>, state: Arc<GlobalState>) {
   match request {
     Request::StartArbitrage(_) => {}
     Request::StartMonitor(command) => 
-      start_monitor(command, binance, state).await,
+      start_monitor(command, exchanges, state).await,
   }
 }
 
@@ -32,8 +34,7 @@ pub async fn worker_loop(
 ) -> Result<(), Box<dyn Error>> {
   println!("{} started !", worker_id);
 
-  let binance = BinanceExchange::new().await;
-  let binance = Rc::new(binance);
+  let exchanges = setup_exchanges().await;
 
   let mut tasks = FuturesUnordered::new();
 
@@ -52,7 +53,7 @@ pub async fn worker_loop(
         tasks.push(
           process_request(
             req,
-            binance.clone(),
+            &exchanges,
             state.clone()
           )
         );

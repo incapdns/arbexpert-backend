@@ -40,6 +40,7 @@ env_logger = "0.11.8"
 spin = "0.10.0"
 mimalloc = "0.1.47"
 async-broadcast = "0.7.2"
+async-trait = "0.1.88"
 
 [build-dependencies]
 prost-build = "0.14.1"

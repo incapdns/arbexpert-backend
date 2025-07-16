@@ -91,13 +91,16 @@ impl BinanceExchange {
           .get("quoteAsset")
           .and_then(|v| v.as_str())
           .unwrap_or_default();
-        let symbol_name = symbol
-          .get("symbol")
-          .and_then(|v| v.as_str())
-          .unwrap_or_default();
+        let symbol_name;
+
+        if let MarketType::Spot = market {
+          symbol_name = format!("{}/{}", base, quote);
+        } else {
+          symbol_name = format!("{}/{}:{}", base, quote, quote);
+        }
 
         assets.push(Asset {
-          symbol: symbol_name.to_string(),
+          symbol: symbol_name,
           base: base.to_string(),
           quote: quote.to_string(),
           market: market.clone(),

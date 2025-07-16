@@ -1,30 +1,39 @@
+use crate::base::exchange::Exchange;
 use crate::Arbitrage;
-use crate::exchange::binance::BinanceExchange;
 use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rust_decimal::{Decimal, dec};
 use std::collections::BTreeMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
-pub struct Reenter {
-  pub exchange: Rc<BinanceExchange>,
+pub struct Reenter<'a> {
+  pub spot: &'a dyn Exchange,
+  pub future: &'a dyn Exchange,
   pub symbol: String,
   pub arbitrage: Arc<Arbitrage>,
 }
 
-async fn spawn_live_calc(
-  exchange: Rc<BinanceExchange>,
+async fn spawn_live_calc<'a>(
+  spot: &'a dyn Exchange,
+  future: &'a dyn Exchange,
   symbol: String,
   arbitrage: Arc<Arbitrage>,
   state: Arc<GlobalState>,
-) -> Reenter {
+) -> Reenter<'a> {
   let arbitrage_cl = Arc::clone(&arbitrage);
   let snapshot = unsafe { &mut *arbitrage_cl.snapshot.get() };
 
-  if let Ok(order_book) = exchange.watch_orderbook(symbol.clone()).await {
+  let target;
+
+  if symbol.contains(':') {
+    target = future;
+  } else {
+    target = spot;
+  }
+
+  if let Ok(order_book) = target.watch_orderbook(symbol.clone()).await {
     let zero = dec!(0);
     let (spot_ask, spot_bid, future_ask, future_bid) = {
       let book = order_book.borrow();
@@ -99,7 +108,8 @@ async fn spawn_live_calc(
   }
 
   Reenter {
-    exchange,
+    spot,
+    future,
     symbol,
     arbitrage: arbitrage_cl,
   }
@@ -107,7 +117,7 @@ async fn spawn_live_calc(
 
 pub async fn start_monitor(
   sm: StartMonitor,
-  binance: Rc<BinanceExchange>,
+  exchanges: &Vec<Box<dyn Exchange>>,
   state: Arc<GlobalState>,
 ) {
   let mut tasks = FuturesUnordered::new();
@@ -119,15 +129,29 @@ pub async fn start_monitor(
       item.future.base, item.future.quote, item.future.quote
     );
 
+    let spot = exchanges
+      .iter()
+      .find(|ex| ex.name().eq(&item.spot.exchange))
+      .unwrap()
+      .as_ref();
+
+    let future = exchanges
+      .iter()
+      .find(|ex| ex.name().eq(&item.future.exchange))
+      .unwrap()
+      .as_ref();
+
     tasks.push(spawn_live_calc(
-      binance.clone(),
+      spot,
+      future,
       spot_symbol, //
       item.clone(),
       state.clone(),
     ));
 
     tasks.push(spawn_live_calc(
-      binance.clone(),
+      spot,
+      future,
       future_symbol,
       item.clone(),
       state.clone(),
@@ -136,7 +160,8 @@ pub async fn start_monitor(
 
   while let Some(reenter) = tasks.next().await {
     tasks.push(spawn_live_calc(
-      reenter.exchange,
+      reenter.spot,
+      reenter.future,
       reenter.symbol,
       reenter.arbitrage.clone(),
       state.clone(),

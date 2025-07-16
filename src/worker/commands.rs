@@ -1,10 +1,8 @@
 use serde::{Deserializer, ser::SerializeSeq};
-use std::{cell::UnsafeCell, sync::Arc};
-
-use rust_decimal::{Decimal, dec};
+use std::sync::Arc;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-
-use crate::{Arbitrage, ArbitrageSnaphot};
+use crate::Arbitrage;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Credentials {
