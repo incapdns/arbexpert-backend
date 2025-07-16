@@ -23,13 +23,14 @@ pub struct SubClient {
   pub subscribed: Subscribed,
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
-  connecting: RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>,
+  connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
 }
 
 #[derive(Clone)]
 pub struct Shared {
   pub pending: Pending,
   pub subscribed: Subscribed,
+  connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>
 }
 
 impl SubClient {
@@ -53,9 +54,12 @@ impl SubClient {
     let on_binary_rc = Rc::new(on_binary);
     let on_message_rc = Rc::new(on_message);
 
+    let connecting = Rc::new(RefCell::new(vec![]));
+
     let shared = Shared {
       pending: pending.clone(),
       subscribed: subscribed.clone(),
+      connecting: connecting.clone()
     };
 
     let on_fail = Rc::new(on_fail);
@@ -106,13 +110,14 @@ impl SubClient {
       subscribed,
       subscribe: subscribe_pin,
       unsubscribe: unsubscribe_pin,
-      connecting: RefCell::new(vec![]),
+      connecting,
     }
   }
 
   pub fn on_fail(shared: Shared) {
     shared.subscribed.borrow_mut().clear();
     shared.pending.borrow_mut().clear();
+    shared.connecting.borrow_mut().clear();
   }
 
   /// Diz se este subcliente já tem `symbol`
