@@ -43,7 +43,7 @@ async fn spawn_live_calc(
       snapshot.spot_bid = price.clone();
     };
 
-    let need_notification = snapshot.entry_percent > dec!(-1) || snapshot.exit_percent > dec!(-1);
+    let need_notification = snapshot.entry_percent > dec!(0) || snapshot.exit_percent > dec!(0);
 
     snapshot.entry_percent = if snapshot.spot_ask != dec!(0) {
       ((snapshot.future_bid - snapshot.spot_ask) / snapshot.spot_ask) * dec!(100)
@@ -95,8 +95,8 @@ pub async fn start_monitor(
   let mut tasks = FuturesUnordered::new();
 
   for item in sm.items.iter() {
-    let spot_symbol = item.spot.symbol.clone();
-    let future_symbol = format!("{spot_symbol}:USDT");
+    let spot_symbol = format!("{}/{}", item.spot.base, item.spot.quote);
+    let future_symbol = format!("{}/{}:{}", item.future.base, item.future.quote, item.future.quote);
 
     tasks.push(spawn_live_calc(
       binance.clone(),
