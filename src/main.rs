@@ -336,7 +336,9 @@ async fn ws_service(
 
   ntex::rt::spawn(async move {
     while let Ok(msg) = rx.recv().await {
-      let _ = sink_clone.send(web::ws::Message::Text(msg.into())).await;
+      if let Err(_) = sink_clone.send(web::ws::Message::Text(msg.into())).await {
+        break;
+      }
     }
   });
 
