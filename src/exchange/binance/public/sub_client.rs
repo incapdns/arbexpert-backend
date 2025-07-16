@@ -75,7 +75,7 @@ impl BinanceSubClient {
       update_id: snapshot.last_update_id,
     })
   }
-
+  
   pub async fn handle_message(
     text: &str,
     shared: Shared,
@@ -84,143 +84,110 @@ impl BinanceSubClient {
     market: MarketType,
   ) -> Option<()> {
     let parsed: Value = serde_json::from_str(text).ok()?;
-
     let symbol = parsed["s"].as_str()?;
-    let borrow = shared.subscribed.borrow();
-    let book = borrow.get(symbol)?;
-
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
-    let get_update = || -> Option<OrderBookUpdate> {
-      let asks = parsed["a"]
-        .as_array()?
-        .iter()
-        .map(|item| {
-          let price = item[0].as_str()?.parse::<Decimal>().ok()?;
-          let qty = item[1].as_str()?.parse::<Decimal>().ok()?;
-          Some((price, qty))
-        })
-        .collect::<Option<Vec<(Decimal, Decimal)>>>()?;
+    let book = {
+      let borrow = shared.subscribed.borrow();
+      borrow.get(symbol)?.clone()
+    };
 
-      let bids = parsed["b"]
-        .as_array()?
-        .iter()
-        .map(|item| {
-          let price = item[0].as_str()?.parse::<Decimal>().ok()?;
-          let qty = item[1].as_str()?.parse::<Decimal>().ok()?;
-          Some((price, qty))
-        })
-        .collect::<Option<Vec<(Decimal, Decimal)>>>()?;
+    let update_id = book.borrow().update_id;
+
+    let build_update = || -> Option<OrderBookUpdate> {
+      let parse_side = |side: &Value| {
+        side
+          .as_array()?
+          .iter()
+          .map(|entry| {
+            let price = entry[0].as_str()?.parse::<Decimal>().ok()?;
+            let qty = entry[1].as_str()?.parse::<Decimal>().ok()?;
+            Some((price, qty))
+          })
+          .collect::<Option<Vec<_>>>()
+      };
 
       Some(OrderBookUpdate {
-        asks,
-        bids,
+        asks: parse_side(&parsed["a"])?,
+        bids: parse_side(&parsed["b"])?,
         update_id: last_update_id,
       })
     };
 
-    let pass_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      {
-        let mut book_bm = book.borrow_mut();
-        book_bm.apply_update(update);
-      }
+    let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
+      book.borrow_mut().apply_update(update);
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
-      for subscription in subscriptions {
-        let _ = subscription.send(book.clone());
+      for sub in subscriptions {
+        let _ = sub.send(book.clone());
       }
 
       Some(())
     };
-    let update_id = {
-      let book_ref = book.borrow(); // cria borrow imutável
-      book_ref.update_id
-    };
 
     if update_id == 0 {
-      {
-        book.borrow_mut().update_id = 1;
-        let mut borrow = init.borrow_mut();
-        borrow.insert(symbol.to_string(), vec![]);
-      }
+      book.borrow_mut().update_id = 1;
+      init.borrow_mut().entry(symbol.to_string()).or_default();
 
-      drop(borrow);
+      let mut processed =
+        Self::process_binance_depth(symbol, utils.clone(), first_update_id, market.clone())
+          .await
+          .ok()?;
 
-      let mut processed_book = Self::process_binance_depth(
-        symbol,
-        utils.clone(),
-        first_update_id,
-        market.clone(),
-      )
-      .await
-      .ok()?;
+      let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
+      pending.sort_by_key(|u| u.update_id);
 
-      let mut borrow = init.borrow_mut();
-      let mut itens = mem::take(borrow.get_mut(symbol)?);
-
-      itens.sort_by(|a, b| a.update_id.cmp(&b.update_id));
-
-      let future_last_id = itens
+      let future_id = pending
         .last()
-        .map(|item| max(item.update_id, last_update_id))
+        .map(|u| max(u.update_id, last_update_id))
         .unwrap_or(last_update_id);
 
-      for item in itens {
-        if item.update_id <= processed_book.update_id {
-          continue;
+      for update in pending {
+        if update.update_id > processed.update_id {
+          processed.apply_update(update);
         }
-
-        processed_book.apply_update(item);
       }
 
       {
-        let mut borrow = shared.subscribed.borrow_mut();
-        let book = borrow.get_mut(symbol)?;
-        let mut book_bm = book.borrow_mut();
-        book_bm.asks = processed_book.asks;
-        book_bm.bids = processed_book.bids;
-        if let MarketType::Future = market {
-          book_bm.update_id = future_last_id;
-        } else {
-          book_bm.update_id = processed_book.update_id;
-        }
+        let mut subscribed = shared.subscribed.borrow_mut();
+        let mut book_mut = subscribed.get_mut(symbol)?.borrow_mut();
+        book_mut.asks = processed.asks;
+        book_mut.bids = processed.bids;
+        book_mut.update_id = match market {
+          MarketType::Future => future_id,
+          _ => processed.update_id,
+        };
       }
     } else if update_id == 1 {
-      let mut borrow = init.borrow_mut();
-      let itens = borrow.get_mut(symbol)?;
-      itens.push(get_update()?);
+      init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else if let MarketType::Spot = market {
-      {
-        let mut book_bm = book.borrow_mut();
-        if last_update_id <= book_bm.update_id {
-          return None;
-        }
+      let mut book_mut = book.borrow_mut();
 
-        if first_update_id > book_bm.update_id + 1 {
-          book_bm.bids.clear();
-          book_bm.asks.clear();
-          book_bm.update_id = 0;
-          return None;
-        }
+      if last_update_id <= book_mut.update_id {
+        return None;
       }
 
-      pass_update(book.clone(), get_update()?);
+      if first_update_id > book_mut.update_id + 1 {
+        book_mut.asks.clear();
+        book_mut.bids.clear();
+        book_mut.update_id = 0;
+        return None;
+      }
+
+      broadcast_update(book.clone(), build_update()?);
     } else {
-      {
-        let previous_last_update_id = parsed["pu"].as_u64()?;
+      let previous_id = parsed["pu"].as_u64()?;
+      let mut book_mut = book.borrow_mut();
 
-        let mut book_bm = book.borrow_mut();
-
-        if previous_last_update_id != book_bm.update_id {
-          book_bm.bids.clear();
-          book_bm.asks.clear();
-          book_bm.update_id = 0;
-          return None;
-        }
+      if previous_id != book_mut.update_id {
+        book_mut.asks.clear();
+        book_mut.bids.clear();
+        book_mut.update_id = 0;
+        return None;
       }
 
-      pass_update(book.clone(), get_update()?);
+      broadcast_update(book.clone(), build_update()?);
     }
 
     Some(())
