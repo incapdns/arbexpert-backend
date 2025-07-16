@@ -71,7 +71,7 @@ async fn spawn_live_calc(
     let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
     let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
 
-    let need_notification = entry_delta > two_percent || exit_delta > two_percent;
+    let mut need_notification = entry_delta > two_percent || exit_delta > two_percent;
 
     snapshot.entry_percent = new_entry_percent;
     snapshot.exit_percent = new_exit_percent;
@@ -80,6 +80,10 @@ async fn spawn_live_calc(
     snapshot.spot_bid = spot_bid;
     snapshot.future_ask = future_ask;
     snapshot.future_bid = future_bid;
+
+    need_notification = need_notification && 
+      snapshot.spot_ask > 0 && snapshot.spot_bid > 0 &&
+      snapshot.future_ask > 0 && snapshot.future_bid > 0
 
     if need_notification {
       let parsed_symbol = symbol.split_once(':').map_or(symbol.as_str(), |(s, _)| s);
