@@ -93,7 +93,7 @@ impl BinanceSubClient {
       borrow.get(symbol)?.clone()
     };
 
-    let update_id = book.borrow().update_id;
+    let update_id = { book.borrow().update_id };
 
     let build_update = || -> Option<OrderBookUpdate> {
       let parse_side = |side: &Value| {
@@ -162,31 +162,35 @@ impl BinanceSubClient {
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else if let MarketType::Spot = market {
-      let mut book_mut = book.borrow_mut();
+      {
+        let mut book_mut = book.borrow_mut();
 
-      if last_update_id <= book_mut.update_id {
-        return None;
-      }
+        if last_update_id <= book_mut.update_id {
+          return None;
+        }
 
-      if first_update_id > book_mut.update_id + 1 {
-        book_mut.asks.clear();
-        book_mut.bids.clear();
-        book_mut.update_id = 0;
-        return None;
+        if first_update_id > book_mut.update_id + 1 {
+          book_mut.asks.clear();
+          book_mut.bids.clear();
+          book_mut.update_id = 0;
+          return None;
+        }
       }
 
       broadcast_update(book.clone(), build_update()?);
     } else {
-      let previous_id = parsed["pu"].as_u64()?;
-      let mut book_mut = book.borrow_mut();
+      {
+        let previous_id = parsed["pu"].as_u64()?;
+        let mut book_mut = book.borrow_mut();
 
-      if previous_id != book_mut.update_id {
-        book_mut.asks.clear();
-        book_mut.bids.clear();
-        book_mut.update_id = 0;
-        return None;
+        if previous_id != book_mut.update_id {
+          book_mut.asks.clear();
+          book_mut.bids.clear();
+          book_mut.update_id = 0;
+          return None;
+        }
       }
-
+      
       broadcast_update(book.clone(), build_update()?);
     }
 
