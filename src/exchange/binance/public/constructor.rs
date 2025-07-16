@@ -25,8 +25,8 @@ impl BinanceExchange {
   pub async fn new() -> Self {
     let mut result = Self {
       public: BinanceExchangePublic {
-        spot_clients: Vec::new(),
-        future_clients: Vec::new(),
+        spot_clients: RefCell::new(Vec::new()),
+        future_clients: RefCell::new(Vec::new()),
         assets: None,
         pairs: Rc::new(RefCell::new(HashMap::new())),
         time_offset_ms: 0,
@@ -38,6 +38,10 @@ impl BinanceExchange {
     let _ = result.load_assets().await;
 
     result
+  }
+
+  pub fn name(&self) -> String {
+    "Binance".to_string()
   }
 
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {

@@ -6,6 +6,6 @@ pub mod public;
 
 pub struct BinanceExchange {
   //private: BinanceExchangePrivate,
-  public: BinanceExchangePublic,
-  utils: Rc<BinanceExchangeUtils>
+  pub public: BinanceExchangePublic,
+  pub utils: Rc<BinanceExchangeUtils>
 }

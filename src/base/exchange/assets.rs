@@ -1,18 +1,20 @@
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValidPair {
   spot_asset: Asset,
   future_asset: Asset,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum MarketType {
   Spot,
   Future,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Asset {
   pub symbol: String,
   pub base: String,

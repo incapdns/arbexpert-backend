@@ -180,7 +180,7 @@ impl MexcExchange {
       .to_string();
 
       if let Some(ws) = &client.private_ws {
-        ws.send(msg).await?;
+        ws.send(msg)?;
       }
     }
 

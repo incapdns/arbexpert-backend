@@ -227,7 +227,7 @@ impl WsClient {
   }
 
   // Método para enviar mensagem texto ao servidor via canal
-  pub async fn send(&self, msg: String) -> Result<(), Box<dyn Error>> {
+  pub fn send(&self, msg: String) -> Result<(), Box<dyn Error>> {
     if let Some(sender) = &self.sender {
       sender
         .send(ws::Message::Text(ByteString::from(msg)))

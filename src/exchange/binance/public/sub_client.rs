@@ -294,11 +294,11 @@ impl BinanceSubClient {
     Ok(msg)
   }
 
-  pub async fn watch(&mut self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+  pub async fn watch(&self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
     self.base.watch(symbol).await
   }
 
-  pub async fn unwatch(&mut self, symbol: &str) -> Result<(), Box<dyn Error>> {
+  pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
     self.base.unwatch(symbol).await
   }
 }

@@ -177,7 +177,7 @@ impl SubClient {
         "params": [ format!("spot@public.increase.depth.batch.v3.api.pb@{}", symbol) ],
       })
       .to_string();
-      self.ws.send(msg).await?;
+      self.ws.send(msg)?;
     }
 
     // aguarda o próximo OrderBook
@@ -196,7 +196,7 @@ impl SubClient {
           "id": 1
       })
       .to_string();
-      self.ws.send(msg).await?;
+      self.ws.send(msg)?;
     }
     Ok(())
   }

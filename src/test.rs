@@ -55,8 +55,7 @@ pub async fn do_websocket_test() -> Result<(), Box<dyn std::error::Error>> {
   client.connect().await?;
 
   client
-    .send("Hello from Glommio WebSocket client!".into())
-    .await?;
+    .send("Hello from Glommio WebSocket client!".into());
 
   compio::time::sleep(Duration::from_millis(1)).await;
 
@@ -92,7 +91,7 @@ pub async fn do_http_post_test() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn do_orderbook_test(
   exchange: &mut BinanceExchange,
 ) -> Result<Rc<OrderBook>, Box<dyn Error>> {
-  exchange.watch_orderbook("BTC/USDT:USDT").await
+  exchange.watch_orderbook("BTC/USDT:USDT".to_string()).await
 }
 
 pub async fn do_watch_my_trades_test() {

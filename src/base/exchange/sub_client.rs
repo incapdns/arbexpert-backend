@@ -5,6 +5,8 @@ use ntex::channel::oneshot;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
+use std::mem;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -14,11 +16,12 @@ pub type Subscribed = Rc<RefCell<HashMap<String, OrderBook>>>;
 type DynString = Pin<Box<dyn Future<Output = Result<String, Box<dyn Error>>>>>;
 
 pub struct SubClient {
-  ws: WsClient,
+  ws: RefCell<WsClient>,
   pub pending: Pending,
   pub subscribed: Subscribed,
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
+  connecting: RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>,
 }
 
 #[derive(Clone)]
@@ -96,11 +99,12 @@ impl SubClient {
       Box::new(move |symbol| Box::pin(unsubscribe(symbol)));
 
     Self {
-      ws,
+      ws: RefCell::new(ws),
       pending,
       subscribed,
       subscribe: subscribe_pin,
       unsubscribe: unsubscribe_pin,
+      connecting: RefCell::new(vec![]),
     }
   }
 
@@ -120,10 +124,8 @@ impl SubClient {
   }
 
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
-  pub async fn watch(&mut self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
-    if !self.ws.is_connected() {
-      self.connect().await?;
-    }
+  pub async fn watch(&self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+    self.connect().await?;
 
     // prepara canal e detecta se é primeira vez
     let (tx, rx) = oneshot::channel();
@@ -151,7 +153,8 @@ impl SubClient {
     if first {
       let result = (self.subscribe)(symbol.to_string()).await;
       if let Ok(json) = result {
-        self.ws.send(json).await?;
+        let ws_bm = self.ws.borrow_mut();
+        ws_bm.send(json)?;
       } else {
         self.subscribed.borrow_mut().remove(symbol);
         self.pending.borrow_mut().remove(symbol);
@@ -166,13 +169,14 @@ impl SubClient {
   }
 
   /// Cancela inscrição e limpa pendentes
-  pub async fn unwatch(&mut self, symbol: &str) -> Result<(), Box<dyn Error>> {
+  pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
     let was_subscribed = self.subscribed.borrow_mut().remove(symbol);
     if was_subscribed.is_some() {
       let result = (self.unsubscribe)(symbol.to_string()).await;
       if let Ok(json) = result {
         self.pending.borrow_mut().remove(symbol);
-        self.ws.send(json).await?
+        let ws_bm = self.ws.borrow_mut();
+        ws_bm.send(json)?
       } else {
         self
           .subscribed
@@ -183,11 +187,37 @@ impl SubClient {
     Ok(())
   }
 
-  pub async fn connect(&mut self) -> Result<(), Box<dyn Error>> {
-    if !self.ws.is_connected() {
-      self.ws.connect().await
+  pub async fn connect(&self) -> Result<(), Box<dyn Error>> {
+    let ws_bm = self.ws.try_borrow_mut();
+
+    if let Ok(mut ws) = ws_bm {
+      if ws.is_connected() {
+        return Ok(());
+      }
+
+      let result = ws.connect().await;
+      let mut connecting = {
+        let mut connecting_bm = self.connecting.borrow_mut();
+        mem::take(connecting_bm.deref_mut())
+      };
+
+      if result.is_err() {
+        connecting.clear();
+        return Err(result.err().unwrap());
+      } else {
+        for connecting in connecting {
+          let _ = connecting.send(Ok(()));
+        }
+      }
     } else {
-      Ok(())
+      let (tx, rx) = oneshot::channel();
+      {
+        let mut connecting_bm = self.connecting.borrow_mut();
+        connecting_bm.push(tx);
+      }
+      let _ = rx.await?;
     }
+
+    Ok(())
   }
 }

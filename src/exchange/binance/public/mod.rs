@@ -5,10 +5,10 @@ pub mod constructor;
 pub mod sub_client;
 pub mod watch;
 
-pub(super) struct BinanceExchangePublic {
-  pub(super) spot_clients: Vec<BinanceSubClient>,
-  pub(super) future_clients: Vec<BinanceSubClient>,
-  pub(super) assets: Option<Assets>,
-  pub(super) pairs: Rc<RefCell<HashMap<String, String>>>,
-  pub(super) time_offset_ms: i64,
+pub struct BinanceExchangePublic {
+  pub spot_clients: RefCell<Vec<Rc<BinanceSubClient>>>,
+  pub future_clients: RefCell<Vec<Rc<BinanceSubClient>>>,
+  pub assets: Option<Assets>,
+  pub pairs: Rc<RefCell<HashMap<String, String>>>,
+  pub time_offset_ms: i64,
 }

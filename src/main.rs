@@ -1,31 +1,31 @@
 use crate::{
-  exchange::mexc::MexcExchange,
+  base::exchange::assets::{Asset, Assets, MarketType},
+  exchange::{binance::BinanceExchange, mexc::MexcExchange},
   worker::{
-    commands::{Request, StartArbitrage},
+    commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
   },
 };
 use async_channel::unbounded;
-use futures::TryStreamExt;
+use futures::{TryStreamExt, join};
 use ntex::{
   Service, fn_service,
   http::HttpService,
+  rt,
   server::Server,
   service::fn_factory_with_config,
   util::BytesMut,
   web::{self, App, HttpRequest, HttpResponse, middleware},
 };
+use rust_decimal::{Decimal, dec};
 use rustls::crypto::aws_lc_rs::default_provider;
+use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-  collections::HashMap,
-  net::SocketAddr,
-  sync::{
-    Arc, Mutex,
-    atomic::{AtomicU32, Ordering},
-  },
-  vec,
+  cell::UnsafeCell, collections::{BTreeMap, HashMap}, net::SocketAddr, sync::{
+    atomic::{AtomicU32, Ordering}, Arc, Mutex
+  }, time::Duration, vec
 };
 
 pub mod arbitrage;
@@ -35,7 +35,7 @@ pub mod test;
 pub mod worker;
 
 #[web::post("/arbitrage/{symbol}/start")]
-async fn index(
+async fn start_arbitrage(
   _: HttpRequest,
   symbol: web::types::Path<String>,
   mut payload: web::types::Payload,
@@ -73,12 +73,162 @@ async fn index(
   };
 
   if let Some(tx) = tx {
-    let _ = tx.send(Request::Start(command)).await;
+    let _ = tx.send(Request::StartArbitrage(command)).await;
 
     HttpResponse::Ok().body(format!("Started!"))
   } else {
     HttpResponse::InternalServerError().body("Worker not found")
   }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ArbitrageResult {
+  pub entry_percent: Decimal,
+  pub exit_percent: Decimal,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Arbitrage {
+  pub spot: Asset,   // Spot de uma exchange
+  pub future: Asset, // Futuro de outra exchange
+  #[serde(with = "unsafe_cell_abr")]
+  pub result: UnsafeCell<ArbitrageResult>,
+}
+
+mod unsafe_cell_abr {
+  use serde::{Deserialize, Deserializer, Serialize, Serializer};
+  use std::cell::UnsafeCell;
+
+  use crate::ArbitrageResult;
+
+  pub fn serialize<S>(cell: &UnsafeCell<ArbitrageResult>, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let inner = unsafe { &*cell.get() };
+    inner.serialize(serializer)
+  }
+
+  pub fn deserialize<'de, D>(deserializer: D) -> Result<UnsafeCell<ArbitrageResult>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let val = ArbitrageResult::deserialize(deserializer)?;
+    Ok(UnsafeCell::new(val))
+  }
+}
+
+async fn setup_exchanges() -> Vec<BinanceExchange> {
+  let (a,) = join!(BinanceExchange::new(),);
+
+  vec![a]
+}
+
+async fn cross_assets_all_exchanges(data: web::types::State<GlobalState>) {
+  let mut arbitrages = HashMap::new();
+
+  // Instancia todas as exchanges
+  let exchanges = setup_exchanges().await;
+
+  // Mapa auxiliar: symbol → [(spot/future asset, tipo mercado, exchange name)]
+  let mut symbol_map: BTreeMap<String, Vec<(&Asset, MarketType, String)>> = BTreeMap::new();
+
+  for exchange in &exchanges {
+    let exchange_name = exchange.name(); // ou `exchange.to_string()` dependendo da trait
+
+    let assets = exchange.public.assets.as_ref().unwrap();
+
+    // Prepara assets spot
+    for asset in assets.spot.values() {
+      symbol_map.entry(asset.symbol.clone()).or_default().push((
+        asset,
+        MarketType::Spot,
+        exchange_name.clone(),
+      ));
+    }
+
+    // Prepara assets futuro
+    for asset in assets.future.values() {
+      symbol_map.entry(asset.symbol.clone()).or_default().push((
+        asset,
+        MarketType::Future,
+        exchange_name.clone(),
+      ));
+    }
+  }
+
+  // Agora cruza todos os pares possíveis por símbolo
+  for entries in symbol_map.values() {
+    let spot_assets: Vec<_> = entries
+      .iter()
+      .filter(|(_, market, _)| *market == MarketType::Spot)
+      .collect();
+
+    let future_assets: Vec<_> = entries
+      .iter()
+      .filter(|(_, market, _)| *market == MarketType::Future)
+      .collect();
+
+    for (spot, _, _) in &spot_assets {
+      for (future, _, _) in &future_assets {
+        let vec = arbitrages
+          .entry(spot.symbol.clone())
+          .or_insert(Arc::new(vec![]));
+
+        let vec_mut = Arc::get_mut(vec).unwrap();
+
+        vec_mut.push(Arc::new(Arbitrage {
+          spot: (*spot).clone(),
+          future: (*future).clone(),
+          result: UnsafeCell::new(ArbitrageResult {
+            entry_percent: dec!(0),
+            exit_percent: dec!(0),
+          }),
+        }));
+      }
+    }
+  }
+
+  let mut i = 0;
+
+  for (key, items) in &arbitrages {
+    let worker_id = {
+      let mut map = data.symbol_map.lock().unwrap();
+      if let Some(&id) = map.get(key) {
+        id
+      } else {
+        let id = data.next_worker.fetch_add(1, Ordering::Relaxed);
+        map.insert(key.clone(), id);
+        id
+      }
+    };
+
+    let tx = {
+      let channels = data.worker_channels.lock().unwrap();
+      channels.get(&worker_id).cloned()
+    };
+
+    if let Some(tx) = tx {
+      let _ = tx.send(Request::StartMonitor(StartMonitor {
+        items: items.clone()
+      })).await;
+    }
+
+    if i % 7 == 0 {
+      ntex::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    i += 1;
+  }
+}
+
+unsafe impl Sync for Arbitrage {}
+
+#[web::post("/monitor/start")]
+async fn start_monitor(data: web::types::State<GlobalState>) -> HttpResponse {
+  rt::spawn(cross_assets_all_exchanges(data));
+
+  HttpResponse::Ok().body(format!("Starting"))
 }
 
 async fn index_async(_: HttpRequest) -> &'static str {
@@ -167,8 +317,7 @@ async fn main() -> std::io::Result<()> {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
     next_worker: AtomicU32::new(0),
-    last_id: AtomicU32::new(0),
-    exchanges: vec![],
+    last_id: AtomicU32::new(0)
   });
 
   let worker_global_state = global_state.clone();
@@ -182,7 +331,7 @@ async fn main() -> std::io::Result<()> {
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
           .service(web::resource("/ws").route(web::get().to(ws_index)))
-          .service((index, no_params, symbols))
+          .service((start_arbitrage, no_params, symbols))
           .service(
             web::resource("/resource2/index.html")
               .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))

@@ -6,61 +6,78 @@ use std::error::Error;
 use std::rc::Rc;
 
 impl BinanceExchange {
-  pub async fn watch_orderbook(&mut self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
-    let normalized = self.normalize_symbol(symbol);
-
-    let sub_clients;
+  pub async fn watch_orderbook(&self, symbol: String) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+    let normalized = self.normalize_symbol(&symbol);
     let is_future = symbol.contains(':');
+
+    let sub_clients = if is_future {
+      &self.public.future_clients
+    } else {
+      &self.public.spot_clients
+    };
     let market = if is_future {
-      sub_clients = &mut self.public.future_clients;
       MarketType::Future
     } else {
-      sub_clients = &mut self.public.spot_clients;
       MarketType::Spot
     };
-
     let symbol = normalized.as_str();
 
-    if let Some(client) = sub_clients
-      .iter_mut()
-      .find(|c| c.has_symbol(symbol)) 
-    {
+    // 1) Se já houver client com esse symbol, usa ele
+    if let Some(client) = {
+      let guard = sub_clients.borrow();
+      guard.iter().find(|c| c.has_symbol(symbol)).cloned()
+    } {
       return client.watch(symbol).await;
     }
 
-    if let Some(client) = sub_clients
-      .iter_mut()
-      .find(|c| c.subscribed_count() < 5) 
-    {
+    // 2) Se houver client com < 5 subscriptions, usa ele
+    if let Some(client) = {
+      let guard = sub_clients.borrow();
+      guard.iter().find(|c| c.subscribed_count() < 5).cloned()
+    } {
       return client.watch(symbol).await;
     }
 
-    let mut new_sc = BinanceSubClient::new(self.utils.clone(), market);
+    // 3) Caso contrário, cria um novo client
+    let new_sc = BinanceSubClient::new(self.utils.clone(), market);
     let book = new_sc.watch(symbol).await?;
-    sub_clients.push(new_sc);
+
+    // Empurra o novo client para o vetor, _depois_ do await
+    {
+      let mut guard = sub_clients.borrow_mut();
+      guard.push(Rc::new(new_sc));
+    }
+
     Ok(book)
   }
 
-  pub async fn unwatch_orderbook(&mut self, symbol: &str) -> Result<(), Box<dyn Error>> {
+  pub async fn unwatch_orderbook(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
     let normalized = self.normalize_symbol(symbol);
 
     let is_future = symbol.contains(':');
     let sub_clients = if is_future {
-      &mut self.public.future_clients
+      &self.public.future_clients
     } else {
-      &mut self.public.spot_clients
+      &self.public.spot_clients
     };
 
     let symbol = normalized.as_str();
 
-    if let Some(pos) = sub_clients
-      .iter()
-      .position(|c| c.has_symbol(symbol)) 
-    {
-      let client = &mut sub_clients[pos];
+    if let Some(pos) = {
+      sub_clients
+        .borrow()
+        .iter()
+        .position(|c| c.has_symbol(symbol))
+    } {
+      let client = {
+        let guard = sub_clients.borrow();
+        guard[pos].clone()
+      };
+
       client.unwatch(symbol).await?;
       if client.subscribed_count() == 0 {
-        sub_clients.remove(pos);
+        let mut guard = sub_clients.borrow_mut();
+        guard.remove(pos);
       }
     }
 

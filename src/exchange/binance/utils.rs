@@ -9,7 +9,7 @@ fn before(s: &str) -> &str {
 }
 
 impl BinanceExchange {
-  pub(super) fn normalize_symbol(&mut self, symbol: &str) -> String {
+  pub(super) fn normalize_symbol(&self, symbol: &str) -> String {
     let result = symbol.replace('/', "").to_uppercase();
     let result = before(&result);
     let mut borrow = self.public.pairs.borrow_mut();
