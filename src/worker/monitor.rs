@@ -66,12 +66,12 @@ async fn spawn_live_calc(
       dec!(0)
     };
 
-    let two_percent = dec!(2);
+    let percent = dec!(2);
 
     let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
     let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
 
-    let mut need_notification = entry_delta > two_percent || exit_delta > two_percent;
+    let mut need_notification = entry_delta > percent || exit_delta > percent;
 
     snapshot.entry_percent = new_entry_percent;
     snapshot.exit_percent = new_exit_percent;
