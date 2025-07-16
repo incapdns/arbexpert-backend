@@ -4,7 +4,7 @@ use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
-use rust_decimal::{dec, Decimal};
+use rust_decimal::{Decimal, dec};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -54,27 +54,30 @@ async fn spawn_live_calc(
       }
     };
 
-    // drop do borrow antes do await
-    snapshot.spot_ask = spot_ask;
-    snapshot.spot_bid = spot_bid;
-    snapshot.future_ask = future_ask;
-    snapshot.future_bid = future_bid;
-
-    snapshot.entry_percent = if snapshot.spot_ask != zero {
+    let new_entry_percent = if snapshot.spot_ask != zero {
       ((snapshot.future_bid - snapshot.spot_ask) / snapshot.spot_ask) * dec!(100)
     } else {
       dec!(0)
     };
 
-    snapshot.exit_percent = if snapshot.future_ask != zero {
+    let new_exit_percent = if snapshot.future_ask != zero {
       ((snapshot.spot_bid - snapshot.future_ask) / snapshot.future_ask) * dec!(100)
     } else {
       dec!(0)
     };
 
-    if snapshot.entry_percent > dec!(0) || snapshot.exit_percent > dec!(0) {
-      let parsed_symbol = symbol.split_once(':')
-        .map_or(symbol.as_str(), |(s, _)| s);
+    let two_percent = dec!(2);
+
+    let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
+    let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
+
+    let need_notification = entry_delta > two_percent || exit_delta > two_percent;
+
+    snapshot.entry_percent = new_entry_percent;
+    snapshot.exit_percent = new_exit_percent;
+
+    if need_notification {
+      let parsed_symbol = symbol.split_once(':').map_or(symbol.as_str(), |(s, _)| s);
 
       let notification = json!({
         "spot": arbitrage_cl.spot.exchange,
