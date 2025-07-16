@@ -76,7 +76,7 @@ async fn spawn_live_calc(
 
       let json = serde_json::to_string(&notification).ok().unwrap();
 
-      state.ws_tx.broadcast(json).await.unwrap();
+      let _ = state.ws_tx.broadcast(json).await;
     }
   }
 

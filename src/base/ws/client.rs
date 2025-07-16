@@ -38,7 +38,7 @@ pub struct WsClient {
   options: WsOptions,
   on_message: Rc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()>>>>,
   on_error: Rc<dyn Fn(String)>,
-  on_close: Option<Box<dyn FnOnce()>>,
+  on_close: Rc<dyn Fn()>,
   on_connected: Rc<dyn Fn()>,
   on_binary: Rc<dyn Fn(Vec<u8>) -> Pin<Box<dyn Future<Output = ()>>>>,
   sender: Option<Sender<ws::Message>>,
@@ -50,7 +50,7 @@ impl WsClient {
     url: impl Into<String>,
     on_message: impl Fn(String) -> OnMessageRet + 'static,
     on_error: impl Fn(String) + 'static,
-    on_close: impl FnOnce() + 'static,
+    on_close: impl Fn() + 'static,
     on_connected: impl Fn() + 'static,
     on_binary: impl Fn(Vec<u8>) -> OnBinaryRet + 'static,
     options: WsOptions,
@@ -70,7 +70,7 @@ impl WsClient {
       options,
       on_message: on_message_pin,
       on_error: Rc::from(on_error),
-      on_close: Some(Box::new(on_close)),
+      on_close: Rc::from(on_close),
       on_connected: Rc::from(on_connected),
       on_binary: on_binary_pin,
       sender: None,
@@ -91,6 +91,10 @@ impl WsClient {
   }
 
   pub async fn connect(&mut self) -> Result<(), Box<dyn Error>> {
+    if self.is_connected() {
+      return Ok(())
+    }
+
     let url = Url::parse(&self.url)?;
     if self.options.verbose {
       println!("Connecting to {}", url);
@@ -191,7 +195,7 @@ impl WsClient {
 
     let on_error = self.on_error.clone();
     let on_message = self.on_message.clone();
-    let on_close = self.on_close.take().unwrap();
+    let on_close = self.on_close.clone();
     let on_binary = self.on_binary.clone();
     rt::spawn(async move {
       while let Some(frame) = rx_ws.next().await {

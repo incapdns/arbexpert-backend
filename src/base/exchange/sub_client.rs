@@ -78,7 +78,7 @@ impl SubClient {
       },
       // on_close
       move || {
-        Self::on_fail(s3);
+        Self::on_fail(s3.clone());
         fail2();
       },
       // on_connected

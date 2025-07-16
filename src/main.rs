@@ -359,7 +359,7 @@ async fn main() -> std::io::Result<()> {
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
 
-  let (ws_tx,_) = async_broadcast::broadcast(10000);
+  let (ws_tx, _ws_rx) = async_broadcast::broadcast(10000);
 
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),

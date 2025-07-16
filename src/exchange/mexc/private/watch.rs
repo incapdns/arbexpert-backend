@@ -75,7 +75,7 @@ impl MexcExchange {
         pending1.borrow_mut().clear();
       }),
       Box::new(move || {
-        Self::release_private_ws(api_key2, listen_key2, utils2);
+        Self::release_private_ws(api_key2.clone(), listen_key2.clone(), utils2.clone());
         inited2.store(false, Ordering::Relaxed);
         pending2.borrow_mut().clear();
       }),
