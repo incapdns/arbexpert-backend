@@ -291,11 +291,6 @@ async fn ws_index(req: web::HttpRequest) -> Result<web::HttpResponse, web::Error
 
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
-  unsafe {
-    std::env::set_var("RUST_LOG", "trace"); // ou "debug", "info"
-  }
-  env_logger::init();
-
   default_provider()
     .install_default()
     .expect("Failed to install default CryptoProvider");
