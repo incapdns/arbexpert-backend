@@ -389,7 +389,15 @@ async fn main() -> std::io::Result<()> {
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
 
-  let (ws_tx, _ws_rx) = async_broadcast::broadcast(10000);
+  let (mut ws_tx, mut ws_rx) = async_broadcast::broadcast(10000);
+
+  ntex::rt::spawn(async move {
+    loop {
+      let _ = ws_rx.recv_direct().await;
+    }
+  });
+
+  ws_tx.set_overflow(true);
 
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
@@ -412,7 +420,13 @@ async fn main() -> std::io::Result<()> {
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
           .service(web::resource("/ws").route(web::get().to(ws_index)))
-          .service((start_arbitrage, no_params, symbols, start_monitor, list_arbitrage))
+          .service((
+            start_arbitrage,
+            no_params,
+            symbols,
+            start_monitor,
+            list_arbitrage,
+          ))
           .service(
             web::resource("/resource2/index.html")
               .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))
