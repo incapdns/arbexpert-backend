@@ -35,7 +35,7 @@ impl BinanceExchange {
     };
 
     let _ = result.sync_time().await;
-    let _ = result.load_assets().await;
+    let a = result.load_assets().await;
 
     result
   }
@@ -65,6 +65,7 @@ impl BinanceExchange {
       .await
       .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
       .body()
+      .limit(100 * 1024 * 1024)
       .await
       .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
 
@@ -143,7 +144,11 @@ impl BinanceExchange {
       }
     }
 
-    self.fetch_assets().await
+    let assets = self.fetch_assets().await?;
+
+    self.public.assets = Some(assets);
+
+    Ok(self.public.assets.clone().unwrap())
   }
 
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {

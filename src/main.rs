@@ -43,7 +43,7 @@ async fn start_arbitrage(
   _: HttpRequest,
   symbol: web::types::Path<String>,
   mut payload: web::types::Payload,
-  data: web::types::State<GlobalState>,
+  data: web::types::State<Arc<GlobalState>>,
 ) -> HttpResponse {
   let mut body = BytesMut::new();
 
@@ -128,7 +128,7 @@ async fn setup_exchanges() -> Vec<BinanceExchange> {
   vec![a]
 }
 
-async fn cross_assets_all_exchanges(data: web::types::State<GlobalState>) {
+async fn cross_assets_all_exchanges(data: web::types::State<Arc<GlobalState>>) {
   let mut arbitrages = HashMap::new();
 
   // Instancia todas as exchanges
@@ -201,7 +201,7 @@ async fn cross_assets_all_exchanges(data: web::types::State<GlobalState>) {
       if let Some(&id) = map.get(key) {
         id
       } else {
-        let id = data.next_worker.fetch_add(1, Ordering::Relaxed);
+        let id = data.next_worker.fetch_add(1, Ordering::Relaxed) % num_cpus::get() as u32;
         map.insert(key.clone(), id);
         id
       }
@@ -219,7 +219,7 @@ async fn cross_assets_all_exchanges(data: web::types::State<GlobalState>) {
     }
 
     if i % 7 == 0 {
-      ntex::time::sleep(Duration::from_secs(1)).await;
+      ntex::time::sleep(Duration::from_secs(2)).await;
     }
 
     i += 1;
@@ -229,7 +229,7 @@ async fn cross_assets_all_exchanges(data: web::types::State<GlobalState>) {
 unsafe impl Sync for Arbitrage {}
 
 #[web::post("/monitor/start")]
-async fn start_monitor(data: web::types::State<GlobalState>) -> HttpResponse {
+async fn start_monitor(data: web::types::State<Arc<GlobalState>>) -> HttpResponse {
   rt::spawn(cross_assets_all_exchanges(data));
 
   HttpResponse::Ok().body(format!("Starting"))
