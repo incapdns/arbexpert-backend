@@ -5,7 +5,6 @@ use crate::worker::state::GlobalState;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rust_decimal::{Decimal, dec};
-use serde_json::json;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -66,7 +65,7 @@ async fn spawn_live_calc(
       dec!(0)
     };
 
-    let percent = dec!(2);
+    let percent = dec!(-1);
 
     let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
     let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
