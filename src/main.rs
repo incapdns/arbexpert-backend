@@ -224,6 +224,8 @@ async fn cross_assets_all_exchanges(data: web::types::State<Arc<GlobalState>>) {
 
     i += 1;
   }
+
+  println!("\n\nDone;\n\n");
 }
 
 unsafe impl Sync for Arbitrage {}
