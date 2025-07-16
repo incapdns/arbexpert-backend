@@ -43,7 +43,7 @@ async fn spawn_live_calc(
       snapshot.spot_bid = price.clone();
     };
 
-    let need_notification = snapshot.entry_percent > dec!(-1) || snapshot.exit_percent > dec!(-1);
+    let need_notification = snapshot.entry_percent > dec!(0) || snapshot.exit_percent > dec!(0);
 
     snapshot.entry_percent = if snapshot.spot_ask != dec!(0) {
       ((snapshot.future_bid - snapshot.spot_ask) / snapshot.spot_ask) * dec!(100)
