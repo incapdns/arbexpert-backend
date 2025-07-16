@@ -116,9 +116,7 @@ pub struct ArbitrageSnaphot {
   pub future_ask: Decimal,
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
-  pub exit_percent: Decimal,
-  pub debug_spot_done: bool,
-  pub debug_future_done: bool,
+  pub exit_percent: Decimal
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -234,9 +232,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_ask: dec!(0),
             spot_bid: dec!(0),
             future_ask: dec!(0),
-            future_bid: dec!(0),
-            debug_spot_done: false,
-            debug_future_done: false
+            future_bid: dec!(0)
           }),
         }));
       }

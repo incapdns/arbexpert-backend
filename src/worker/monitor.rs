@@ -29,22 +29,14 @@ async fn spawn_live_calc(
     let (spot_ask, spot_bid, future_ask, future_bid) = {
       let book = order_book.borrow();
       let get_price = |side: &BTreeMap<Decimal, Decimal>| {
-        let result =side
+        side
           .iter()
           .next()
           .map(|(p, _)| p.clone())
-          .unwrap_or(zero.clone());
-
-        if result == zero {
-          println!("\n\n\nDe matar ne!!!!!\n\n\n");
-        }
-
-        result
+          .unwrap_or(zero.clone())
       };
 
       if symbol.contains(':') {
-        snapshot.debug_future_done = true;
-
         (
           snapshot.spot_ask.clone(),
           snapshot.spot_bid.clone(),
@@ -52,8 +44,6 @@ async fn spawn_live_calc(
           get_price(&book.bids),
         )
       } else {
-        snapshot.debug_spot_done = true;
-
         (
           get_price(&book.asks),
           get_price(&book.bids),
@@ -67,15 +57,17 @@ async fn spawn_live_calc(
       ((future_bid - spot_ask) / spot_ask) * dec!(100)
     } else {
       dec!(0)
-    };
+    }
+    .trunc_with_scale(2);
 
     let new_exit_percent = if future_ask != zero {
       ((spot_bid - future_ask) / future_ask) * dec!(100)
     } else {
       dec!(0)
-    };
+    }
+    .trunc_with_scale(2);
 
-    let percent = dec!(4);
+    let percent = dec!(0.05);
 
     let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
     let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
@@ -90,15 +82,12 @@ async fn spawn_live_calc(
     snapshot.future_ask = future_ask;
     snapshot.future_bid = future_bid;
 
-    let not_first = 
-      snapshot.spot_ask > zero && snapshot.spot_bid > zero &&
-      snapshot.future_ask > zero && snapshot.future_bid > zero;
+    let not_first = snapshot.spot_ask > zero
+      && snapshot.spot_bid > zero
+      && snapshot.future_ask > zero
+      && snapshot.future_bid > zero;
 
     need_notification = need_notification && not_first;
-
-    if !not_first && snapshot.debug_future_done && snapshot.debug_spot_done {
-      println!("First {}", symbol);
-    }
 
     if need_notification {
       let notification = serde_json::to_string(snapshot);
