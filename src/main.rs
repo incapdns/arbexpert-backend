@@ -27,6 +27,10 @@ use std::{
     atomic::{AtomicU32, Ordering}, Arc, Mutex
   }, time::Duration, vec
 };
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 pub mod arbitrage;
 pub mod base;
