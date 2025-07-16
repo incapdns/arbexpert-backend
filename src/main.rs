@@ -91,6 +91,22 @@ async fn start_arbitrage(
   }
 }
 
+#[web::get("/arbitrage/list")]
+async fn list_arbitrage(
+  _: HttpRequest,
+  state: web::types::State<Arc<GlobalState>>,
+) -> HttpResponse {
+  let result = state.arbitrages.read().ok().unwrap();
+  let serializable: Vec<&Arbitrage> = result.iter().map(|a| a.as_ref()).collect();
+  let json = serde_json::to_string(&serializable);
+
+  if let Ok(result) = json {
+    HttpResponse::Ok().body(result)
+  } else {
+    HttpResponse::InternalServerError().body("Strange")
+  }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ArbitrageSnaphot {
   pub spot_ask: Decimal,
@@ -233,9 +249,11 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
       }
     };
 
-    let mut arbitrages_mut = state.arbitrages.write().unwrap();
-    for item in items.iter() {
-      arbitrages_mut.push(item.clone());
+    {
+      let mut arbitrages_mut = state.arbitrages.write().unwrap();
+      for item in items.iter() {
+        arbitrages_mut.push(item.clone());
+      }
     }
 
     let tx = {
@@ -390,7 +408,7 @@ async fn main() -> std::io::Result<()> {
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
           .service(web::resource("/ws").route(web::get().to(ws_index)))
-          .service((start_arbitrage, no_params, symbols, start_monitor))
+          .service((start_arbitrage, no_params, symbols, start_monitor, list_arbitrage))
           .service(
             web::resource("/resource2/index.html")
               .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))
