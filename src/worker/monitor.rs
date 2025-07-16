@@ -8,6 +8,7 @@ use rust_decimal::dec;
 use serde_json::json;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub struct Reenter {
   pub exchange: Rc<BinanceExchange>,
@@ -29,6 +30,8 @@ async fn spawn_live_calc(
 
   if let Ok(ob) = order_book {
     let zero = dec!(0);
+    let ob = ob.borrow();
+    
     if symbol.contains(':') {
       let (price, _) = ob.asks.iter().next().unwrap_or((&zero, &zero));
       snapshot.future_ask = price.clone();
@@ -115,6 +118,8 @@ pub async fn start_monitor(
   }
 
   while let Some(reenter) = tasks.next().await {
+    ntex::time::sleep(Duration::from_millis(100)).await;
+
     tasks.push(spawn_live_calc(
       reenter.exchange,
       reenter.symbol,

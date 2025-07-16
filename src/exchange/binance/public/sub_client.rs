@@ -2,6 +2,7 @@ use crate::base::exchange::assets::MarketType;
 use crate::base::exchange::order::OrderBook;
 use crate::base::exchange::order::OrderBookUpdate;
 use crate::base::exchange::sub_client::Shared;
+use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
@@ -35,44 +36,37 @@ struct DepthSnapshot {
 
 impl BinanceSubClient {
   async fn process_binance_depth(
-    symbol: String,
+    symbol: &str,
     utils: Rc<BinanceExchangeUtils>,
-    initial_event_u: u64, // U do primeiro evento recebido
+    initial_event_u: u64,
     market: MarketType,
   ) -> Result<OrderBook, Box<dyn std::error::Error>> {
     let mut snapshot = DepthSnapshot {
       last_update_id: 0,
-      bids: vec![],
-      asks: vec![],
+      bids: Vec::new(),
+      asks: Vec::new(),
     };
 
     while snapshot.last_update_id < initial_event_u {
-      let uri = if let MarketType::Spot = market {
-        format!(
-          "https://api.binance.com/api/v3/depth?symbol={}&limit=100",
-          symbol
-        )
-      } else {
-        format!(
-          "https://fapi.binance.com/fapi/v1/depth?symbol={}&limit=100",
-          symbol
-        )
+      let uri = match market {
+        MarketType::Spot => {
+          format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
+        }
+        MarketType::Future => {
+          format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
+        }
       };
 
-      let dummy_headers: Vec<(&str, &str)> = vec![("Accept", "application/json")];
-      let headers = from_headers!(dummy_headers);
-
+      let headers = from_headers!([("Accept", "application/json")]);
       let response = utils
         .http_client
-        .request("GET".to_string(), uri, headers, None)
+        .request("GET".into(), uri, headers, None)
         .await?
         .body()
         .limit(10 * 1024 * 1024)
         .await?;
 
-      let response = std::str::from_utf8(&response)?;
-
-      snapshot = serde_json::from_str(response)?;
+      snapshot = serde_json::from_slice(&response)?; // Evita utf8 + alloc
     }
 
     Ok(OrderBook {
@@ -92,8 +86,8 @@ impl BinanceSubClient {
     let parsed: Value = serde_json::from_str(text).ok()?;
 
     let symbol = parsed["s"].as_str()?;
-    let mut borrow = shared.subscribed.borrow_mut();
-    let book = borrow.get_mut(symbol)?;
+    let borrow = shared.subscribed.borrow();
+    let book = borrow.get(symbol)?;
 
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
@@ -126,23 +120,27 @@ impl BinanceSubClient {
       })
     };
 
-    let pass_update = |book: &mut OrderBook, update: OrderBookUpdate| -> Option<()> {
-      book.apply_update(update);
-
-      let subscription_book = Rc::new(book.clone());
+    let pass_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
+      {
+        let mut book_bm = book.borrow_mut();
+        book_bm.apply_update(update);
+      }
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for subscription in subscriptions {
-        let _ = subscription.send(subscription_book.clone());
+        let _ = subscription.send(book.clone());
       }
 
       Some(())
     };
+    let update_id = {
+      let book_ref = book.borrow(); // cria borrow imutável
+      book_ref.update_id
+    };
 
-    if book.update_id == 0 {
-      book.update_id = 1;
-
+    if update_id == 0 {
       {
+        book.borrow_mut().update_id = 1;
         let mut borrow = init.borrow_mut();
         borrow.insert(symbol.to_string(), vec![]);
       }
@@ -150,7 +148,7 @@ impl BinanceSubClient {
       drop(borrow);
 
       let mut processed_book = Self::process_binance_depth(
-        symbol.to_string(),
+        symbol,
         utils.clone(),
         first_update_id,
         market.clone(),
@@ -179,42 +177,50 @@ impl BinanceSubClient {
       {
         let mut borrow = shared.subscribed.borrow_mut();
         let book = borrow.get_mut(symbol)?;
-        book.asks = processed_book.asks;
-        book.bids = processed_book.bids;
+        let mut book_bm = book.borrow_mut();
+        book_bm.asks = processed_book.asks;
+        book_bm.bids = processed_book.bids;
         if let MarketType::Future = market {
-          book.update_id = future_last_id;
+          book_bm.update_id = future_last_id;
         } else {
-          book.update_id = processed_book.update_id;
+          book_bm.update_id = processed_book.update_id;
         }
       }
-    } else if book.update_id == 1 {
+    } else if update_id == 1 {
       let mut borrow = init.borrow_mut();
       let itens = borrow.get_mut(symbol)?;
       itens.push(get_update()?);
     } else if let MarketType::Spot = market {
-      if last_update_id <= book.update_id {
-        return None;
+      {
+        let mut book_bm = book.borrow_mut();
+        if last_update_id <= book_bm.update_id {
+          return None;
+        }
+
+        if first_update_id > book_bm.update_id + 1 {
+          book_bm.bids.clear();
+          book_bm.asks.clear();
+          book_bm.update_id = 0;
+          return None;
+        }
       }
 
-      if first_update_id > book.update_id + 1 {
-        book.bids.clear();
-        book.asks.clear();
-        book.update_id = 0;
-        return None;
-      }
-
-      pass_update(book, get_update()?);
+      pass_update(book.clone(), get_update()?);
     } else {
-      let previous_last_update_id = parsed["pu"].as_u64()?;
+      {
+        let previous_last_update_id = parsed["pu"].as_u64()?;
 
-      if previous_last_update_id != book.update_id {
-        book.bids.clear();
-        book.asks.clear();
-        book.update_id = 0;
-        return None;
+        let mut book_bm = book.borrow_mut();
+
+        if previous_last_update_id != book_bm.update_id {
+          book_bm.bids.clear();
+          book_bm.asks.clear();
+          book_bm.update_id = 0;
+          return None;
+        }
       }
 
-      pass_update(book, get_update()?);
+      pass_update(book.clone(), get_update()?);
     }
 
     Some(())
@@ -294,7 +300,7 @@ impl BinanceSubClient {
     Ok(msg)
   }
 
-  pub async fn watch(&self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+  pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     self.base.watch(symbol).await
   }
 

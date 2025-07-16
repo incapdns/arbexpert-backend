@@ -1,12 +1,12 @@
 use crate::base::exchange::assets::MarketType;
-use crate::base::exchange::order::OrderBook;
+use crate::base::exchange::sub_client::SharedBook;
 use crate::exchange::binance::BinanceExchange;
 use crate::exchange::binance::public::sub_client::BinanceSubClient;
 use std::error::Error;
 use std::rc::Rc;
 
 impl BinanceExchange {
-  pub async fn watch_orderbook(&self, symbol: String) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+  pub async fn watch_orderbook(&self, symbol: String) -> Result<SharedBook, Box<dyn Error>> {
     let normalized = self.normalize_symbol(&symbol);
     let is_future = symbol.contains(':');
 

@@ -10,8 +10,10 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub type Pending = Rc<RefCell<HashMap<String, Vec<oneshot::Sender<Rc<OrderBook>>>>>>;
-pub type Subscribed = Rc<RefCell<HashMap<String, OrderBook>>>;
+pub type SharedBook = Rc<RefCell<OrderBook>>;
+
+pub type Pending = Rc<RefCell<HashMap<String, Vec<oneshot::Sender<SharedBook>>>>>;
+pub type Subscribed = Rc<RefCell<HashMap<String, SharedBook>>>;
 
 type DynString = Pin<Box<dyn Future<Output = Result<String, Box<dyn Error>>>>>;
 
@@ -124,7 +126,7 @@ impl SubClient {
   }
 
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
-  pub async fn watch(&self, symbol: &str) -> Result<Rc<OrderBook>, Box<dyn Error>> {
+  pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     self.connect().await?;
 
     // prepara canal e detecta se é primeira vez
@@ -137,11 +139,11 @@ impl SubClient {
       if !subs.contains_key(symbol) {
         subs.insert(
           symbol.to_string(),
-          OrderBook {
+          Rc::new(RefCell::new(OrderBook {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
             update_id: 0,
-          },
+          })),
         );
         map.entry(symbol.to_string()).or_insert_with(|| Vec::new());
         first = true;
