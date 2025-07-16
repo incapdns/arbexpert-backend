@@ -82,8 +82,8 @@ async fn spawn_live_calc(
     snapshot.future_bid = future_bid;
 
     need_notification = need_notification && 
-      snapshot.spot_ask > 0 && snapshot.spot_bid > 0 &&
-      snapshot.future_ask > 0 && snapshot.future_bid > 0
+      snapshot.spot_ask > zero && snapshot.spot_bid > zero &&
+      snapshot.future_ask > zero && snapshot.future_bid > zero;
 
     if need_notification {
       let parsed_symbol = symbol.split_once(':').map_or(symbol.as_str(), |(s, _)| s);
