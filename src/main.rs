@@ -109,6 +109,8 @@ async fn list_arbitrage(
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ArbitrageSnaphot {
+  pub base: String,
+  pub quote: String,
   pub spot_ask: Decimal,
   pub spot_bid: Decimal,
   pub future_ask: Decimal,
@@ -223,6 +225,8 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
           spot: (*spot).clone(),
           future: (*future).clone(),
           snapshot: UnsafeCell::new(ArbitrageSnaphot {
+            base: spot.base.to_string(),
+            quote: spot.quote.to_string(),
             entry_percent: dec!(0),
             exit_percent: dec!(0),
             spot_ask: dec!(0),

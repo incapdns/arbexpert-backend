@@ -86,15 +86,7 @@ async fn spawn_live_calc(
       snapshot.future_ask > zero && snapshot.future_bid > zero;
 
     if need_notification {
-      let parsed_symbol = symbol.split_once(':').map_or(symbol.as_str(), |(s, _)| s);
-
-      let notification = json!({
-        "spot": arbitrage_cl.spot.exchange,
-        "future": arbitrage_cl.future.exchange,
-        "symbol": parsed_symbol,
-        "entryPercent": snapshot.entry_percent,
-        "exitPercent": snapshot.exit_percent
-      });
+      let notification = serde_json::to_string(snapshot).unwrap();
 
       if let Ok(json) = serde_json::to_string(&notification) {
         let _ = state.ws_tx.broadcast(json).await;
