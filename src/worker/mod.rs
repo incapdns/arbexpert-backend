@@ -1,12 +1,9 @@
 use std::error::Error;
-use std::rc::Rc;
 use std::sync::Arc;
-
 use crate::base::exchange::Exchange;
 use crate::utils::setup_exchanges;
 use crate::worker::state::WorkerId;
 use crate::{
-  exchange::binance::BinanceExchange,
   worker::{commands::Request, state::GlobalState},
 };
 use async_channel::Receiver;
