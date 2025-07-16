@@ -25,7 +25,7 @@ pub struct WsOptions {
 impl Default for WsOptions {
   fn default() -> Self {
     Self {
-      verbose: true,
+      verbose: false,
       ping_interval: Duration::from_secs(30),
       backoff_base: Duration::from_millis(500),
       max_backoff: Duration::from_secs(30),

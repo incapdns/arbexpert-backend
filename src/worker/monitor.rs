@@ -121,4 +121,6 @@ pub async fn start_monitor(
       state.clone(),
     ));
   }
+
+  println!("Finished");
 }
