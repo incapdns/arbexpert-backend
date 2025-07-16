@@ -330,7 +330,7 @@ async fn main() -> std::io::Result<()> {
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
           .service(web::resource("/ws").route(web::get().to(ws_index)))
-          .service((start_arbitrage, no_params, symbols))
+          .service((start_arbitrage, no_params, symbols, start_monitor))
           .service(
             web::resource("/resource2/index.html")
               .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))
