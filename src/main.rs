@@ -1,12 +1,12 @@
 use crate::{
-  base::exchange::{assets::{Asset, MarketType}, Exchange}, exchange::{binance::BinanceExchange, mexc::MexcExchange}, utils::setup_exchanges, worker::{
+  base::exchange::{assets::{Asset, MarketType}}, exchange::mexc::MexcExchange, utils::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
   }
 };
 use async_channel::unbounded;
-use futures::{TryStreamExt, join};
+use futures::TryStreamExt;
 use mimalloc::MiMalloc;
 use ntex::{
   Service, fn_service,
