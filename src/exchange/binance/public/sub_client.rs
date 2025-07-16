@@ -75,7 +75,7 @@ impl BinanceSubClient {
       update_id: snapshot.last_update_id,
     })
   }
-  
+
   pub async fn handle_message(
     text: &str,
     shared: Shared,
