@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{cmp::Reverse, collections::BTreeMap};
 
 use rust_decimal::{dec, Decimal};
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ pub struct OrderRequest {
 
 #[derive(Clone, Debug)]
 pub struct OrderBook {
-  pub bids: BTreeMap<Decimal, Decimal>, // preço -> quantidade
+  pub bids: BTreeMap<Reverse<Decimal>, Decimal>, // preço -> quantidade
   pub asks: BTreeMap<Decimal, Decimal>, // preço -> quantidade
   pub update_id: u64,
 }
@@ -54,10 +54,11 @@ impl OrderBook {
     let asks_len = update.asks.len();
 
     for (price, qty) in update.bids {
+      let key = Reverse(price);
       if qty.eq(&dec!(0)) {
-        self.bids.remove(&price);
+        self.bids.remove(&key);
       } else {
-        self.bids.insert(price, qty);
+        self.bids.insert(key, qty);
       }
     }
 
@@ -79,7 +80,7 @@ impl OrderBook {
   }
 
   // Opcional: retorna os bids/asks como vetores ordenados
-  pub fn get_bids(&self) -> Vec<(Decimal, Decimal)> {
+  pub fn get_bids(&self) -> Vec<(Reverse<Decimal>, Decimal)> {
     self.bids.iter().rev().map(|(&p, &q)| (p, q)).collect()
   }
 

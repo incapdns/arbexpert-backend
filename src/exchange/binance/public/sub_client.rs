@@ -13,6 +13,7 @@ use serde_json::Value;
 use serde_json::json;
 use std::cell::RefCell;
 use std::cmp::max;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
@@ -69,8 +70,12 @@ impl BinanceSubClient {
     }
 
     Ok(OrderBook {
-      asks: snapshot.asks.into_iter().collect(),
-      bids: snapshot.bids.into_iter().collect(),
+      asks: snapshot.asks.into_iter().collect(), // Decimal -> Decimal, OK
+      bids: snapshot
+        .bids
+        .into_iter()
+        .map(|(price, qty)| (Reverse(price), qty)) // <- Aqui converte
+        .collect(),
       update_id: snapshot.last_update_id,
     })
   }

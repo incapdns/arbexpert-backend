@@ -1,12 +1,15 @@
 use crate::{
-  base::exchange::{assets::{Asset, MarketType}}, exchange::mexc::MexcExchange, utils::setup_exchanges, worker::{
+  base::exchange::assets::{Asset, MarketType},
+  exchange::mexc::MexcExchange,
+  utils::setup_exchanges,
+  worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
-  }
+  },
 };
 use async_channel::unbounded;
-use futures::TryStreamExt;
+use futures::{TryStreamExt, join};
 use mimalloc::MiMalloc;
 use ntex::{
   Service, fn_service,
@@ -22,15 +25,9 @@ use rustls::crypto::aws_lc_rs::default_provider;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-  cell::UnsafeCell,
-  collections::{BTreeMap, HashMap},
-  net::SocketAddr,
-  sync::{
-    Arc, Mutex, RwLock,
-    atomic::{AtomicBool, AtomicU32, Ordering},
-  },
-  time::Duration,
-  vec,
+  cell::UnsafeCell, cmp::Reverse, collections::{BTreeMap, HashMap}, net::SocketAddr, sync::{
+    atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, RwLock
+  }, time::Duration, vec
 };
 
 #[global_allocator]
@@ -39,9 +36,9 @@ static GLOBAL: MiMalloc = MiMalloc;
 pub mod arbitrage;
 pub mod base;
 pub mod exchange;
+pub mod test;
 pub mod utils;
 pub mod worker;
-pub mod test;
 
 #[web::post("/arbitrage/{symbol}/start")]
 async fn start_arbitrage(

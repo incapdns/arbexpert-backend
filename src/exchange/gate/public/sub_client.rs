@@ -13,6 +13,7 @@ use serde_json::from_value;
 use serde_json::Value;
 use serde_json::json;
 use std::cell::RefCell;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
@@ -95,7 +96,7 @@ impl GateSubClient {
           bids: result
             .bids
             .into_iter()
-            .map(|item| (item.p, item.s))
+            .map(|item| (Reverse(item.p), item.s))
             .collect(),
           update_id: result.id,
         };
@@ -104,7 +105,10 @@ impl GateSubClient {
 
         snapshot = OrderBook {
           asks: result.asks.into_iter().collect(),
-          bids: result.bids.into_iter().collect(),
+          bids: result.bids
+            .into_iter()
+            .map(|(k, v)| (Reverse(k), v))
+            .collect(),
           update_id: result.id,
         };
       }

@@ -1,3 +1,4 @@
+use crate::utils::get_price;
 use crate::Arbitrage;
 use crate::base::exchange::Exchange;
 use crate::worker::commands::StartMonitor;
@@ -5,6 +6,7 @@ use crate::worker::state::GlobalState;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rust_decimal::{Decimal, dec};
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -37,25 +39,17 @@ async fn spawn_live_calc<'a>(
     let zero = dec!(0);
     let (spot_ask, spot_bid, future_ask, future_bid) = {
       let book = order_book.borrow();
-      let get_price = |side: &BTreeMap<Decimal, Decimal>| {
-        side
-          .iter()
-          .next()
-          .map(|(p, _)| p.clone())
-          .unwrap_or(zero.clone())
-      };
-
       if symbol.contains(':') {
         (
           snapshot.spot_ask.clone(),
           snapshot.spot_bid.clone(),
-          get_price(&book.asks),
-          get_price(&book.bids),
+          get_price(&book.asks, &zero).clone(),
+          get_price(&book.bids, &Reverse(zero)).0,
         )
       } else {
         (
-          get_price(&book.asks),
-          get_price(&book.bids),
+          get_price(&book.asks, &zero).clone(),
+          get_price(&book.bids, &Reverse(zero)).0,
           snapshot.future_ask.clone(),
           snapshot.future_bid.clone(),
         )
