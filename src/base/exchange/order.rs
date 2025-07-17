@@ -81,7 +81,7 @@ impl OrderBook {
 
   // Opcional: retorna os bids/asks como vetores ordenados
   pub fn get_bids(&self) -> Vec<(Reverse<Decimal>, Decimal)> {
-    self.bids.iter().rev().map(|(&p, &q)| (p, q)).collect()
+    self.bids.iter().map(|(&p, &q)| (p, q)).collect()
   }
 
   pub fn get_asks(&self) -> Vec<(Decimal, Decimal)> {
