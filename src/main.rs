@@ -1,3 +1,4 @@
+use nix::sys::socket::{setsockopt, sockopt::TcpNoDelay};
 use crate::{
   base::exchange::{assets::{Asset, MarketType}}, exchange::mexc::MexcExchange, utils::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
@@ -379,7 +380,9 @@ async fn main() -> std::io::Result<()> {
   socket.set_reuse_port(true)?;
 
   socket.bind(&addr.into())?;
-  socket.listen(addr.port().into())?;
+  socket.listen(4096)?;
+
+  socket.set_tcp_nodelay(true);
 
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
