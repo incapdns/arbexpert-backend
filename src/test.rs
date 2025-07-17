@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::thread;
 use crate::{
   base::{
-    exchange::{order::OrderBook, sub_client::SharedBook},
+    exchange::{order::OrderBook, sub_client::SharedBook, Exchange},
     http::{builder::HttpRequestBuilder, client::ntex::NtexHttpClient},
     ws::client::{WsClient, WsOptions},
   },
@@ -89,9 +89,12 @@ pub async fn do_http_post_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn do_orderbook_test(
-  exchange: &mut BinanceExchange,
-) -> Result<SharedBook, Box<dyn Error>> {
-  exchange.watch_orderbook("BTC/USDT:USDT".to_string()).await
+  exchange: &dyn Exchange,
+) -> (Result<SharedBook, Box<dyn Error>>, Result<SharedBook, Box<dyn Error>>) {
+  (
+    exchange.watch_orderbook("BTC/USDT".to_string()).await,
+    exchange.watch_orderbook("BTC/USDT:USDT".to_string()).await
+  )
 }
 
 pub async fn do_watch_my_trades_test() {

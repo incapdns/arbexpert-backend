@@ -1,9 +1,15 @@
 use futures::join;
 
-use crate::{base::exchange::Exchange, exchange::binance::BinanceExchange};
+use crate::{base::exchange::Exchange, exchange::{binance::BinanceExchange, gate::GateExchange}};
 
 pub async fn setup_exchanges() -> Vec<Box<dyn Exchange>> {
-  let (a,) = join!(BinanceExchange::new(),);
+  let (a, b) = join!(
+    BinanceExchange::new(),
+    GateExchange::new()
+  );
 
-  vec![Box::new(a)]
+  vec![
+    Box::new(a),
+    Box::new(b)
+  ]
 }

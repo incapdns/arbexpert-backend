@@ -5,54 +5,72 @@ use crate::base::exchange::sub_client::Shared;
 use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
-use crate::exchange::binance::BinanceExchangeUtils;
+use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use serde_json::from_value;
 use serde_json::Value;
 use serde_json::json;
 use std::cell::RefCell;
-use std::cmp::max;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
 use std::rc::Rc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
-pub struct BinanceSubClient {
+pub struct GateSubClient {
   base: SubClient,
   init: Init,
 }
 
 #[derive(Debug, Deserialize)]
-struct DepthSnapshot {
-  #[serde(rename = "lastUpdateId")]
-  last_update_id: u64,
+struct SpotDepthSnapshot {
+  #[serde(rename = "id")]
+  id: u64,
   bids: Vec<(Decimal, Decimal)>,
   asks: Vec<(Decimal, Decimal)>,
 }
 
-impl BinanceSubClient {
-  async fn process_binance_depth(
+#[derive(Debug, Deserialize)]
+struct FutureDepthSnapshotItem {
+  p: Decimal,
+  s: Decimal,
+}
+
+#[derive(Debug, Deserialize)]
+struct FutureDepthSnapshot {
+  #[serde(rename = "id")]
+  id: u64,
+  bids: Vec<FutureDepthSnapshotItem>,
+  asks: Vec<FutureDepthSnapshotItem>,
+}
+
+impl GateSubClient {
+  async fn process_gate_depth(
     symbol: &str,
-    utils: Rc<BinanceExchangeUtils>,
+    utils: Rc<GateExchangeUtils>,
     initial_event_u: u64,
     market: MarketType,
   ) -> Result<OrderBook, Box<dyn std::error::Error>> {
-    let mut snapshot = DepthSnapshot {
-      last_update_id: 0,
-      bids: Vec::new(),
-      asks: Vec::new(),
-    };
+    let mut snapshot = OrderBook::default();
 
-    while snapshot.last_update_id < initial_event_u {
+    while snapshot.update_id < initial_event_u {
       let uri = match market {
         MarketType::Spot => {
-          format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
+          format!(
+            "https://api.gateio.ws/api/v4/spot/order_book?currency_pair={}&with_id=true",
+            symbol
+          )
         }
         MarketType::Future => {
-          format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
+          format!(
+            "https://fx-api.gateio.ws/api/v4/futures/usdt/order_book?contract={}&with_id=true",
+            symbol
+          )
         }
       };
 
@@ -65,24 +83,45 @@ impl BinanceSubClient {
         .limit(10 * 1024 * 1024)
         .await?;
 
-      snapshot = serde_json::from_slice(&response)?; // Evita utf8 + alloc
+      if let MarketType::Future = market {
+        let result = serde_json::from_slice::<FutureDepthSnapshot>(&response)?;
+
+        snapshot = OrderBook {
+          asks: result
+            .asks
+            .into_iter()
+            .map(|item| (item.p, item.s))
+            .collect(),
+          bids: result
+            .bids
+            .into_iter()
+            .map(|item| (item.p, item.s))
+            .collect(),
+          update_id: result.id,
+        };
+      } else {
+        let result = serde_json::from_slice::<SpotDepthSnapshot>(&response)?;
+
+        snapshot = OrderBook {
+          asks: result.asks.into_iter().collect(),
+          bids: result.bids.into_iter().collect(),
+          update_id: result.id,
+        };
+      }
     }
 
-    Ok(OrderBook {
-      asks: snapshot.asks.into_iter().collect(),
-      bids: snapshot.bids.into_iter().collect(),
-      update_id: snapshot.last_update_id,
-    })
+    Ok(snapshot)
   }
 
   pub async fn handle_message(
     text: &str,
     shared: Shared,
     init: Init,
-    utils: Rc<BinanceExchangeUtils>,
+    utils: Rc<GateExchangeUtils>,
     market: MarketType,
   ) -> Option<()> {
     let parsed: Value = serde_json::from_str(text).ok()?;
+    let parsed = &parsed["result"];
     let symbol = parsed["s"].as_str()?;
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
@@ -100,8 +139,16 @@ impl BinanceSubClient {
           .as_array()?
           .iter()
           .map(|entry| {
-            let price = entry[0].as_str()?.parse::<Decimal>().ok()?;
-            let qty = entry[1].as_str()?.parse::<Decimal>().ok()?;
+            let price;
+            let qty;
+            if let MarketType::Spot = market {
+              price = entry[0].as_str()?.parse::<Decimal>().ok()?;
+              qty = entry[1].as_str()?.parse::<Decimal>().ok()?;
+            } else {
+              let tmp = FutureDepthSnapshotItem::deserialize(entry).ok()?;
+              price = tmp.p;
+              qty = tmp.s;
+            }
             Some((price, qty))
           })
           .collect::<Option<Vec<_>>>()
@@ -130,17 +177,12 @@ impl BinanceSubClient {
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
       let mut processed =
-        Self::process_binance_depth(symbol, utils.clone(), first_update_id, market.clone())
+        Self::process_gate_depth(symbol, utils.clone(), first_update_id, market.clone())
           .await
           .ok()?;
 
       let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
       pending.sort_by_key(|u| u.update_id);
-
-      let future_id = pending
-        .last()
-        .map(|u| max(u.update_id, last_update_id))
-        .unwrap_or(last_update_id);
 
       for update in pending {
         if update.update_id > processed.update_id {
@@ -153,14 +195,11 @@ impl BinanceSubClient {
         let mut book_mut = subscribed.get_mut(symbol)?.borrow_mut();
         book_mut.asks = processed.asks;
         book_mut.bids = processed.bids;
-        book_mut.update_id = match market {
-          MarketType::Future => future_id,
-          _ => processed.update_id,
-        };
+        book_mut.update_id = processed.update_id;
       }
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
-    } else if let MarketType::Spot = market {
+    } else {
       {
         let mut book_mut = book.borrow_mut();
 
@@ -169,20 +208,6 @@ impl BinanceSubClient {
         }
 
         if first_update_id > book_mut.update_id + 1 {
-          book_mut.asks.clear();
-          book_mut.bids.clear();
-          book_mut.update_id = 0;
-          return None;
-        }
-      }
-
-      broadcast_update(book.clone(), build_update()?);
-    } else {
-      {
-        let previous_id = parsed["pu"].as_u64()?;
-        let mut book_mut = book.borrow_mut();
-
-        if previous_id != book_mut.update_id {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
@@ -200,19 +225,22 @@ impl BinanceSubClient {
     init.borrow_mut().clear();
   }
 
-  /// Cria e conecta imediatamente
-  pub fn new(utils: Rc<BinanceExchangeUtils>, market: MarketType) -> Self {
+  pub fn new(utils: Rc<GateExchangeUtils>, market: MarketType, time_offset_ms: i64) -> Self {
     let ws_url = if let MarketType::Spot = market {
-      "wss://stream.binance.com/ws"
+      "wss://api.gateio.ws/ws/v4/"
     } else {
-      "wss://fstream.binance.com/ws"
+      "wss://fx-ws.gateio.ws/v4/ws/usdt"
     };
 
     let init = Rc::new(RefCell::new(HashMap::new()));
 
     let (ic1, ic2) = (init.clone(), init.clone());
 
-    BinanceSubClient {
+    let market_cl = market.clone();
+
+    let (m1, m2) = (market_cl.clone(), market_cl);
+
+    GateSubClient {
       base: SubClient::new(
         ws_url,
         move |text, shared| {
@@ -227,8 +255,8 @@ impl BinanceSubClient {
         move || {
           Self::on_fail(ic2.clone());
         },
-        Self::subscribe,
-        Self::unsubscribe,
+        move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
+        move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
       ),
       init,
     }
@@ -245,12 +273,27 @@ impl BinanceSubClient {
   }
 
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
-  pub async fn subscribe(symbol: String) -> Result<String, Box<dyn Error>> {
+  pub async fn subscribe(
+    market: MarketType,
+    time_offset_ms: i64,
+    symbol: String,
+  ) -> Result<String, Box<dyn Error>> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
+
+    let channel;
+
+    if let MarketType::Spot = market {
+      channel = "spot.order_book_update";
+    } else {
+      channel = "futures.order_book_update"
+    }
+
+    let timestamp = now + time_offset_ms;
     let msg = json!({
-      "method": "SUBSCRIBE",
-      "params": [
-        format!("{}@depth@100ms", symbol.to_lowercase()),
-      ],
+      "time": timestamp,
+      "channel": channel,
+      "event": "subscribe",
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
@@ -258,12 +301,27 @@ impl BinanceSubClient {
   }
 
   /// Cancela inscrição e limpa pendentes
-  pub async fn unsubscribe(symbol: String) -> Result<String, Box<dyn Error>> {
+  pub async fn unsubscribe(
+    market: MarketType,
+    time_offset_ms: i64,
+    symbol: String,
+  ) -> Result<String, Box<dyn Error>> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
+
+    let channel;
+
+    if let MarketType::Spot = market {
+      channel = "spot.order_book_update";
+    } else {
+      channel = "futures.order_book_update"
+    }
+
+    let timestamp = now + time_offset_ms;
     let msg = json!({
-      "method": "UNSUBSCRIBE",
-      "params": [
-        format!("{}@depth@100ms", symbol.to_lowercase()),
-      ],
+      "time": timestamp,
+      "channel": channel,
+      "event": "unsubscribe",
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
