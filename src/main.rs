@@ -1,5 +1,5 @@
 use crate::{
-  base::exchange::{assets::{Asset, MarketType}}, exchange:: mexc::MexcExchange, utils::setup_exchanges, worker::{
+  base::exchange::{assets::{Asset, MarketType}}, exchange::mexc::MexcExchange, utils::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
@@ -266,7 +266,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         .await;
     }
 
-    if i % 7 == 0 {
+    if i % 20 == 0 {
       ntex::time::sleep(Duration::from_secs(2)).await;
     }
 

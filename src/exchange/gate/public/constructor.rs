@@ -48,9 +48,9 @@ impl GateExchange {
     let headers: HashMap<String, String> = HashMap::new();
 
     let url = if let MarketType::Spot = market {
-      "https://api.gate.com/api/v3/exchangeInfo"
+      "https://api.gateio.ws/api/v4/spot/currency_pairs"
     } else {
-      "https://fapi.gate.com/fapi/v1/exchangeInfo"
+      "https://fx-api.gateio.ws/api/v4/futures/usdt/contracts"
     };
 
     let resp = self
@@ -77,20 +77,37 @@ impl GateExchange {
 
     let mut assets = Vec::new();
 
-    if let Some(symbols) = json.get("symbols").and_then(|v| v.as_array()) {
+    if let Some(symbols) = json.as_array() {
       for symbol in symbols {
-        if symbol.get("status").and_then(|v| v.as_str()) != Some("TRADING") {
-          continue;
+        if let MarketType::Future = market {
+          if symbol.get("status").and_then(|v| v.as_str()) != Some("trading") {
+            continue;
+          }
+        } else {
+           if symbol.get("trade_status").and_then(|v| v.as_str()) != Some("tradable") {
+            continue;
+          }
         }
 
-        let base = symbol
-          .get("baseAsset")
-          .and_then(|v| v.as_str())
-          .unwrap_or_default();
-        let quote = symbol
-          .get("quoteAsset")
-          .and_then(|v| v.as_str())
-          .unwrap_or_default();
+        let name;
+
+        if let MarketType::Future = market {
+          name = symbol
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        } else {
+          name = symbol
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        }
+
+        let mut parts = name.splitn(2, '_');
+
+        let base = parts.next().unwrap_or("");
+        let quote = parts.next().unwrap_or("");
+
         let symbol_name;
 
         if let MarketType::Spot = market {
