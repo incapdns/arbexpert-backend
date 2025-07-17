@@ -98,6 +98,14 @@ async fn spawn_live_calc<'a>(
 
     need_notification = need_notification && not_first;
 
+    let max = dec!(50);
+
+    let valid = 
+      snapshot.entry_percent.abs() < max &&
+      snapshot.exit_percent.abs() < max;
+
+    need_notification = need_notification && valid;
+
     if need_notification {
       let notification = serde_json::to_string(arbitrage_cl.as_ref());
 
