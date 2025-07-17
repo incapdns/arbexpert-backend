@@ -9,7 +9,7 @@ use crate::{
   },
 };
 use async_channel::unbounded;
-use futures::{TryStreamExt, join};
+use futures::TryStreamExt;
 use mimalloc::MiMalloc;
 use ntex::{
   Service, fn_service,
