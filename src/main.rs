@@ -1,4 +1,3 @@
-use nix::sys::socket::{setsockopt, sockopt::TcpNoDelay};
 use crate::{
   base::exchange::{assets::{Asset, MarketType}}, exchange::mexc::MexcExchange, utils::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
