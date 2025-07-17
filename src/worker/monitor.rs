@@ -102,7 +102,7 @@ async fn spawn_live_calc<'a>(
       let notification = serde_json::to_string(snapshot);
 
       if let Ok(json) = notification {
-        //let _ = state.ws_tx.try_broadcast(json);
+        let _ = state.ws_tx.try_broadcast(json);
       }
     }
   }

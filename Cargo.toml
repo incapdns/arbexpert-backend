@@ -3,11 +3,6 @@ name = "arbexpert"
 version = "1.0.0"
 edition = "2024"
 
-[profile.release]
-debug = false
-lto = true
-opt-level = 2
-
 [dependencies]
 async-tungstenite = "0.30.0"
 async-tls = "0.13.0"
@@ -44,3 +39,14 @@ async-trait = "0.1.88"
 
 [build-dependencies]
 prost-build = "0.14.1"
+
+[profile.release]
+opt-level = 3          # 3 para máxima performance (veja abaixo)
+lto = true             # Link Time Optimization (reduz o tamanho e melhora desempenho)
+codegen-units = 1      # Compila tudo de uma vez (melhor otimização, pior tempo de build)
+panic = "abort"        # Remove rastreamento de stack em panics = binário menor
+strip = true           # Remove símbolos e metadados para produção (Rust 1.74+)
+inline-threshold = 100 # Permite mais inlining de funções. Útil se seu projeto tem muitas chamadas pequenas.
+
+# Para CPU específico (via RUSTFLAGS):
+debug = false

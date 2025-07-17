@@ -14,9 +14,11 @@ WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+COPY src/main-docker.rs src/main.rs
 
 RUN cargo build --release || true
+
+RUN rm -rf /app/src/main.rs
 
 COPY . .
 
