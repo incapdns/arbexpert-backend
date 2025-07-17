@@ -381,7 +381,7 @@ async fn main() -> std::io::Result<()> {
   socket.bind(&addr.into())?;
   socket.listen(4096)?;
 
-  socket.set_tcp_nodelay(true);
+  socket.set_tcp_nodelay(true)?;
 
   let std_listener = std::net::TcpListener::from(socket);
   std_listener.set_nonblocking(true)?;
