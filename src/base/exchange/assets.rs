@@ -16,6 +16,7 @@ pub enum MarketType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Asset {
+  #[serde(skip)]
   pub symbol: String,
   pub base: String,
   pub quote: String,

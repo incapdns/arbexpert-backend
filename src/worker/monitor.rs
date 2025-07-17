@@ -99,7 +99,7 @@ async fn spawn_live_calc<'a>(
     need_notification = need_notification && not_first;
 
     if need_notification {
-      let notification = serde_json::to_string(snapshot);
+      let notification = serde_json::to_string(arbitrage_cl.as_ref());
 
       if let Ok(json) = notification {
         let _ = state.ws_tx.try_broadcast(json);
