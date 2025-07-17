@@ -1,5 +1,5 @@
-use crate::base::exchange::Exchange;
 use crate::Arbitrage;
+use crate::base::exchange::Exchange;
 use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
 use futures::StreamExt;
@@ -141,21 +141,17 @@ pub async fn start_monitor(
       .unwrap()
       .as_ref();
 
-    tasks.push(spawn_live_calc(
-      spot,
-      future,
-      spot_symbol, //
-      item.clone(),
-      state.clone(),
-    ));
+    let symbols = vec![spot_symbol, future_symbol];
 
-    tasks.push(spawn_live_calc(
-      spot,
-      future,
-      future_symbol,
-      item.clone(),
-      state.clone(),
-    ));
+    for symbol in symbols {
+      tasks.push(spawn_live_calc(
+        spot,
+        future,
+        symbol, //
+        item.clone(),
+        state.clone(),
+      ));
+    }
   }
 
   while let Some(reenter) = tasks.next().await {

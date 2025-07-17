@@ -110,9 +110,13 @@ async fn list_arbitrage(
 pub struct ArbitrageSnaphot {
   pub base: String,
   pub quote: String,
+  #[serde(skip)]
   pub spot_ask: Decimal,
+  #[serde(skip)]
   pub spot_bid: Decimal,
+  #[serde(skip)]
   pub future_ask: Decimal,
+  #[serde(skip)]
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal
