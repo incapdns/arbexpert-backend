@@ -1,16 +1,18 @@
 use futures::future::pending;
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, select};
+use futures::{FutureExt, Stream, select};
 use futures_util::StreamExt;
 use ntex::channel::mpsc;
 use ntex::tls::rustls::TlsConnector;
 use ntex::util::ByteString;
+use ntex::ws::WsSink;
 use ntex::{channel::mpsc::Sender, rt, time, util::Bytes, ws};
 use rustls::RootCertStore;
-use serde_json::Value;
+use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll};
 use std::{error::Error, time::Duration};
 use url::Url;
 
@@ -29,6 +31,90 @@ impl Default for WsOptions {
       ping_interval: Duration::from_secs(30),
       backoff_base: Duration::from_millis(500),
       max_backoff: Duration::from_secs(30),
+    }
+  }
+}
+
+struct CallbackConditionalParams<P> {
+  ready: Rc<AtomicBool>,
+  param: Rc<RefCell<Option<P>>>,
+}
+
+impl<P> CallbackConditionalParams<P> {
+  fn set_ready(&self, ready: bool) {
+    self.ready.store(ready, Ordering::Relaxed);
+  }
+
+  fn set_param(&self, param: P) {
+    let mut param_bm = self.param.borrow_mut();
+    *param_bm = Some(param)
+  }
+}
+
+struct CallbackConditional<P, F, R, Fut>
+where
+  F: Fn(Option<P>) -> Fut + Unpin,
+  Fut: Future<Output = R> + Unpin,
+{
+  ready: Rc<AtomicBool>,
+  param: Rc<RefCell<Option<P>>>,
+  callback: F,
+  future: Fut,
+}
+impl<P, F, R, Fut> CallbackConditional<P, F, R, Fut>
+where
+  F: Fn(Option<P>) -> Fut + Unpin,
+  Fut: Future<Output = R> + Unpin,
+{
+  fn new(
+    callback: F,
+  ) -> (
+    CallbackConditional<P, F, R, Fut>,
+    CallbackConditionalParams<P>,
+  ) {
+    let ready = Rc::new(AtomicBool::new(false));
+    let param = Rc::new(RefCell::new(None));
+
+    (
+      CallbackConditional {
+        ready: ready.clone(),
+        param: param.clone(),
+        future: callback(None),
+        callback,
+      },
+      CallbackConditionalParams {
+        ready: ready.clone(),
+        param: param.clone(),
+      },
+    )
+  }
+}
+
+impl<P, F, R, Fut> Stream for CallbackConditional<P, F, R, Fut>
+where
+  F: Fn(Option<P>) -> Fut + Unpin,
+  Fut: Future<Output = R> + Unpin,
+{
+  type Item = Fut::Output;
+
+  fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    if !self.ready.load(Ordering::Relaxed) {
+      return Poll::Pending;
+    }
+
+    let param = {
+      let mut param_bm = self.param.borrow_mut();
+      param_bm.take()
+    };
+    let this = self.get_mut();
+    let self_future = (this.callback)(param);
+    let future = Pin::new(&mut this.future);
+    match future.poll(cx) {
+      Poll::Pending => Poll::Pending,
+      Poll::Ready(res) => {
+        this.future = self_future;
+        Poll::Ready(Some(res))
+      }
     }
   }
 }
@@ -92,7 +178,7 @@ impl WsClient {
 
   pub async fn connect(&mut self) -> Result<(), Box<dyn Error>> {
     if self.is_connected() {
-      return Ok(())
+      return Ok(());
     }
 
     let url = Url::parse(&self.url)?;
@@ -127,105 +213,168 @@ impl WsClient {
     let (tx, rx) = mpsc::channel::<ws::Message>();
     self.sender = Some(tx.clone());
 
-    // Tarefa para enviar mensagens da fila (tx)
-    let sink = ws_client.sink();
-    rt::spawn(async move {
-      while let Some(cmd) = rx.recv().await {
-        let _ = sink.send(cmd).await;
+    async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
+      if tasks.len() > 0 {
+        tasks.next().await
+      } else {
+        pending().await
       }
-    });
+    }
 
-    let (ic1, ic2) = (self.is_connected.clone(), self.is_connected.clone());
-
-    let ping_sink = ws_client.sink();
-    let ping_interval = self.options.ping_interval;
-    let on_error = self.on_error.clone();
-    rt::spawn(async move {
-      loop {
-        time::sleep(ping_interval).await;
-        if ping_sink
-          .send(ws::Message::Ping(Bytes::new()))
-          .await
-          .is_err()
-        {
-          ic1.store(false, Ordering::Relaxed);
-          (on_error)("Ping error".to_string());
-          break;
-        }
-      }
-    });
-
-    let (message_tx, message_rx) = mpsc::channel();
-    let (binary_tx, binary_rx) = mpsc::channel();
-
-    rt::spawn(async move {
-      let mut tasks = FuturesUnordered::new();
-
-      async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
-        if tasks.len() > 0 {
-          tasks.next().await
-        } else {
-          pending().await
-        }
-      }
-
-      loop {
-        select! {
-          opt = message_rx.recv().fuse() => {
-            if let Some(future) = opt {
-              tasks.push(future);
-            } else {
-              break;
-            }
-          },
-          opt = binary_rx.recv().fuse() => {
-            if let Some(future) = opt {
-              tasks.push(future);
-            } else {
-              break;
-            }
-          },
-          _ = next_task(&mut tasks).fuse() => {},
-        };
-      }
-    });
+    //COMECA AQUI
 
     let sink = ws_client.sink();
-    let mut rx_ws = ws_client.seal().receiver();
+    rt::spawn({
+      let on_error = self.on_error.clone();
+      let is_connected = self.is_connected.clone();
+      let ping_interval = self.options.ping_interval;
 
-    let on_error = self.on_error.clone();
-    let on_message = self.on_message.clone();
-    let on_close = self.on_close.clone();
-    let on_binary = self.on_binary.clone();
-    rt::spawn(async move {
-      while let Some(frame) = rx_ws.next().await {
-        match frame {
-          Ok(ws::Frame::Binary(bin)) => {
-            let _ = binary_tx.send((on_binary)(bin.to_vec()));
-          }
-          Ok(ws::Frame::Text(txt)) => {
-            let message = String::from_utf8(txt.to_vec());
-            if let Ok(str) = message {
-              let _ = message_tx.send((on_message)(str));
+      let sink = sink.clone();
+      let on_binary = self.on_binary.clone();
+      let on_message = self.on_message.clone();
+      let on_close = self.on_close.clone();
+
+      async move {
+        // Our struct client tasks
+        let mut client_tasks = FuturesUnordered::new();
+
+        //External message of sink.send
+        let mut ext_tasks = FuturesUnordered::new();
+
+        let mut ping_interval = time::interval(ping_interval);
+        let mut next_ping_interval = ping_interval.next().fuse();
+
+        let (mut ping, ping_config) = CallbackConditional::new(|_| {
+          let sink = sink.clone();
+          Box::pin(async move { sink.send(ws::Message::Ping(Bytes::new())).await })
+        });
+        let mut next_ping = ping.next().fuse();
+
+        let (mut pong, pong_config) = CallbackConditional::new(|bytes| {
+          let sink = sink.clone();
+
+          Box::pin(async move {
+            if let Some(bytes) = bytes {
+              let result = sink.send(ws::Message::Pong(bytes)).await;
+              if let Err(e) = result {
+                return Err(format!("Ping failed: {}", e));
+              }
+            }
+
+            Ok(())
+          })
+        });
+        let mut next_pong = pong.next().fuse();
+
+        let mut rx_ws = ws_client.seal().receiver();
+
+        loop {
+          select! {
+            maybe_cmd = rx.recv().fuse() => match maybe_cmd {
+              Some(cmd) => {
+                ext_tasks.push(sink.send(cmd));
+              }
+              None => {
+                (on_error)("Closed channel".to_string());
+                break;
+              }
+            },
+            _ = next_ping_interval => {
+              ping_config.set_ready(true);
+              ping_config.set_param(());
+            },
+            ping_res = next_ping => {
+              if let None = ping_res {
+                (on_error)(format!("Internal error in ping"));
+                break;
+              }
+
+              if let Err(e) = ping_res.unwrap() {
+                (on_error)(format!("Ping error: {}", e));
+                break;
+              }
+
+              ping_config.set_ready(false);
+              next_ping = ping.next().fuse();
+              next_ping_interval = ping_interval.next().fuse();
+            },
+            message = rx_ws.next().fuse() => match message {
+              Some(result) => {
+                match result {
+                  Ok(ws::Frame::Binary(bin)) => {
+                    client_tasks.push((on_binary)(bin.to_vec()));
+                  }
+                  Ok(ws::Frame::Text(txt)) => {
+                    let str = String::from_utf8(txt.to_vec());
+                    if let Ok(txt) = str {
+                      client_tasks.push((on_message)(txt));
+                    } else {
+                      (on_error)("Parser utf8 failed".to_string());
+                      break;
+                    }
+                  }
+                  Ok(ws::Frame::Ping(p)) => {
+                    pong_config.set_ready(true);
+                    pong_config.set_param(p);
+                    next_pong = pong.next().fuse();
+                  }
+                  Ok(ws::Frame::Close(e)) => {
+                    (on_error)(format!("Closed socket: {:?}", e));
+                    (on_close)();
+                    break;
+                  }
+                  Err(e) => {
+                    (on_error)(format!("WebSocket error: {:?}", e));
+                    break;
+                  }
+                  _ => {
+                    (on_error)(format!("Unknown error"));
+                    break
+                  }
+                }
+              }
+              None => {
+                (on_error)("Closed channel".to_string());
+                break;
+              }
+            },
+            client_res = next_task(&mut client_tasks).fuse() => {
+              if let None = client_res {
+                (on_error)("Wsclient failed".to_string());
+                break;
+              }
+            }
+            pong_res = next_pong => {
+              if let None = pong_res {
+                (on_error)(format!("Internal error in pong"));
+                break;
+              }
+
+              if let Err(e) = pong_res.unwrap() {
+                (on_error)(format!("Ping error: {}", e));
+                break;
+              }
+            },
+            ext_res = next_task(&mut ext_tasks).fuse() => match ext_res {
+              None => {
+                (on_error)("Closed channel".to_string());
+                break;
+              },
+              Some(result) => {
+                if let Err(e) = result {
+                  (on_error)(format!("Send external failed: {}", e));
+                  break;
+                }
+              }
             }
           }
-          Ok(ws::Frame::Ping(p)) => {
-            let _ = sink.send(ws::Message::Pong(p)).await;
-          }
-          Ok(ws::Frame::Close(_)) => {
-            ic2.store(false, Ordering::Relaxed);
-            (on_close)();
-            break;
-          }
-          Err(e) => {
-            ic2.store(false, Ordering::Relaxed);
-            (on_error)(format!("WebSocket error: {:?}", e));
-            break;
-          }
-          _ => {}
         }
+
+        is_connected.store(false, Ordering::Relaxed);
       }
     });
+
+    //SO ACIMA
 
     Ok(())
   }

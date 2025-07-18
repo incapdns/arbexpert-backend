@@ -1,6 +1,6 @@
 use crate::{
   base::exchange::assets::{Asset, MarketType},
-  exchange::{binance::BinanceExchange, gate::GateExchange, mexc::MexcExchange},
+  exchange::{gate::GateExchange, mexc::MexcExchange},
   utils::setup_exchanges,
   worker::{
     commands::{Request, StartArbitrage, StartMonitor},
