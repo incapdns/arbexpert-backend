@@ -78,7 +78,8 @@ impl SubClient {
         async move { on_message_cl(message, s1).await }
       },
       // on_error
-      move |_| {
+      move |err| {
+        println!("{ws_url}: {err}");
         Self::on_fail(s2.clone());
         fail1();
       },
