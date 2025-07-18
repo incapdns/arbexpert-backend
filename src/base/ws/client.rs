@@ -257,7 +257,7 @@ impl WsClient {
             if let Some(bytes) = bytes {
               let result = sink.send(ws::Message::Pong(bytes)).await;
               if let Err(e) = result {
-                return Err(format!("Ping failed: {}", e));
+                return Err(e);
               }
             }
 
