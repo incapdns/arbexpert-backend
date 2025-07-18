@@ -92,7 +92,20 @@ async fn start_arbitrage(
 }
 
 #[web::get("/orderbook/{symbol}/futures")]
-async fn monitor_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
+async fn monitor_futures_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
+  let gate = GateExchange::new().await;
+
+  let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
+
+  if let Ok(orderbook) = result {
+    HttpResponse::Ok().body(format!("{:?}", orderbook))
+  } else {
+    HttpResponse::InternalServerError().body("Worker not found")
+  }
+}
+
+#[web::get("/orderbook/{symbol}/spot")]
+async fn monitor_spot_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
   let gate = GateExchange::new().await;
 
   let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
@@ -486,7 +499,8 @@ async fn main() -> std::io::Result<()> {
             symbols,
             start_monitor,
             list_arbitrage,
-            monitor_orderbook,
+            monitor_futures_orderbook,
+            monitor_spot_orderbook,
           ))
           .service(
             web::resource("/resource2/index.html")
