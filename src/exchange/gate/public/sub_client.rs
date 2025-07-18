@@ -9,7 +9,6 @@ use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use serde_json::from_value;
 use serde_json::Value;
 use serde_json::json;
 use std::cell::RefCell;
@@ -18,6 +17,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
 use std::rc::Rc;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -30,7 +30,6 @@ pub struct GateSubClient {
 
 #[derive(Debug, Deserialize)]
 struct SpotDepthSnapshot {
-  #[serde(rename = "id")]
   id: u64,
   bids: Vec<(Decimal, Decimal)>,
   asks: Vec<(Decimal, Decimal)>,
@@ -44,7 +43,6 @@ struct FutureDepthSnapshotItem {
 
 #[derive(Debug, Deserialize)]
 struct FutureDepthSnapshot {
-  #[serde(rename = "id")]
   id: u64,
   bids: Vec<FutureDepthSnapshotItem>,
   asks: Vec<FutureDepthSnapshotItem>,
@@ -57,9 +55,9 @@ impl GateSubClient {
     initial_event_u: u64,
     market: MarketType,
   ) -> Result<OrderBook, Box<dyn std::error::Error>> {
-    let mut snapshot = OrderBook::default();
+    let mut processed = OrderBook::default();
 
-    while snapshot.update_id < initial_event_u {
+    while processed.update_id < initial_event_u {
       let uri = match market {
         MarketType::Spot => {
           format!(
@@ -87,7 +85,7 @@ impl GateSubClient {
       if let MarketType::Future = market {
         let result = serde_json::from_slice::<FutureDepthSnapshot>(&response)?;
 
-        snapshot = OrderBook {
+        processed = OrderBook {
           asks: result
             .asks
             .into_iter()
@@ -103,9 +101,10 @@ impl GateSubClient {
       } else {
         let result = serde_json::from_slice::<SpotDepthSnapshot>(&response)?;
 
-        snapshot = OrderBook {
+        processed = OrderBook {
           asks: result.asks.into_iter().collect(),
-          bids: result.bids
+          bids: result
+            .bids
             .into_iter()
             .map(|(k, v)| (Reverse(k), v))
             .collect(),
@@ -114,7 +113,7 @@ impl GateSubClient {
       }
     }
 
-    Ok(snapshot)
+    Ok(processed)
   }
 
   pub async fn handle_message(
@@ -161,12 +160,13 @@ impl GateSubClient {
       Some(OrderBookUpdate {
         asks: parse_side(&parsed["a"])?,
         bids: parse_side(&parsed["b"])?,
-        update_id: last_update_id,
+        last_update_id,
+        first_update_id,
       })
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      book.borrow_mut().apply_update(update);
+      book.borrow_mut().apply_update(&update);
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
@@ -180,26 +180,43 @@ impl GateSubClient {
       book.borrow_mut().update_id = 1;
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
-      let mut processed =
+      let snapshot =
         Self::process_gate_depth(symbol, utils.clone(), first_update_id, market.clone())
           .await
           .ok()?;
 
-      let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
-      pending.sort_by_key(|u| u.update_id);
-
-      for update in pending {
-        if update.update_id > processed.update_id {
-          processed.apply_update(update);
+      let mut retries = 0;
+      let processed = loop {
+        if retries == 5 {
+          book.borrow_mut().update_id = 0;
+          return Some(());
         }
-      }
 
-      {
-        let mut subscribed = shared.subscribed.borrow_mut();
-        let mut book_mut = subscribed.get_mut(symbol)?.borrow_mut();
-        book_mut.asks = processed.asks;
-        book_mut.bids = processed.bids;
-        book_mut.update_id = processed.update_id;
+        let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
+
+        let idx = pending
+          .iter()
+          .position(|item| {
+            item.first_update_id <= snapshot.update_id + 1 &&
+            item.last_update_id  >= snapshot.update_id + 1
+          });
+
+        if idx.is_none() {
+          ntex::time::sleep(Duration::from_millis(100)).await;
+          retries += 1;
+          continue;
+        }
+
+        pending.drain(0..idx.unwrap());
+
+        break pending;
+      };
+
+      let mut book_bm = book.borrow_mut();
+      book_bm.asks = snapshot.asks;
+      book_bm.bids = snapshot.bids;
+      for update in processed {
+        book_bm.apply_update(&update);
       }
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);

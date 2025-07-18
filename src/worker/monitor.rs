@@ -5,9 +5,8 @@ use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
-use rust_decimal::{Decimal, dec};
+use rust_decimal::dec;
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub struct Reenter<'a> {

@@ -1,5 +1,5 @@
 use crate::{
-  base::exchange::assets::{Asset, MarketType},
+  base::exchange::{assets::{Asset, MarketType}},
   exchange::mexc::MexcExchange,
   utils::setup_exchanges,
   worker::{
@@ -9,10 +9,14 @@ use crate::{
   },
 };
 use async_channel::unbounded;
-use futures::TryStreamExt;
+use futures::{
+  FutureExt, StreamExt, TryStreamExt, future::pending, select, stream::FuturesUnordered,
+};
 use mimalloc::MiMalloc;
 use ntex::{
-  Service, fn_service,
+  Service,
+  channel::oneshot,
+  fn_service,
   http::HttpService,
   rt,
   server::Server,
@@ -25,9 +29,16 @@ use rustls::crypto::aws_lc_rs::default_provider;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-  cell::UnsafeCell, cmp::Reverse, collections::{BTreeMap, HashMap}, net::SocketAddr, sync::{
-    atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, RwLock
-  }, time::Duration, vec
+  cell::{RefCell, UnsafeCell},
+  collections::{BTreeMap, HashMap},
+  net::SocketAddr,
+  rc::Rc,
+  sync::{
+    Arc, Mutex, RwLock,
+    atomic::{AtomicBool, AtomicU32, Ordering},
+  },
+  time::Duration,
+  vec,
 };
 
 #[global_allocator]
@@ -116,7 +127,7 @@ pub struct ArbitrageSnaphot {
   //#[serde(skip)]
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
-  pub exit_percent: Decimal
+  pub exit_percent: Decimal,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -226,7 +237,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_ask: dec!(0),
             spot_bid: dec!(0),
             future_ask: dec!(0),
-            future_bid: dec!(0)
+            future_bid: dec!(0),
           }),
         }));
       }
@@ -328,13 +339,41 @@ async fn ws_service(
   let mut rx = state.ws_tx.new_receiver();
   let sink_clone = sink.clone();
 
+  let (close_tx, close_rx) = oneshot::channel();
+
+  async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
+    if tasks.len() > 0 {
+      tasks.next().await
+    } else {
+      pending().await
+    }
+  }
+
   ntex::rt::spawn(async move {
-    while let Ok(msg) = rx.recv().await {
-      if let Err(_) = sink_clone.send(web::ws::Message::Text(msg.into())).await {
-        break;
-      }
+    let mut tasks = FuturesUnordered::new();
+
+    loop {
+      select! {
+        req = rx.recv().fuse() => {
+          let Ok(msg) = req else { return };
+
+          tasks.push(sink_clone.send(web::ws::Message::Text(msg.into())));
+        },
+        task = next_task(&mut tasks).fuse() => {
+          let Some(res) = task else { return };
+
+          if let Err(_) = res {
+            return
+          }
+        },
+        _ = close_rx.recv().fuse()  => {
+          return
+        }
+      };
     }
   });
+
+  let close_tx = Rc::new(RefCell::new(Some(close_tx)));
 
   let service = fn_service(move |frame| {
     let response = match frame {
@@ -343,7 +382,15 @@ async fn ws_service(
       )),
       web::ws::Frame::Binary(bin) => Some(web::ws::Message::Binary(bin)),
       web::ws::Frame::Ping(msg) => Some(web::ws::Message::Pong(msg)),
-      web::ws::Frame::Close(reason) => Some(web::ws::Message::Close(reason)),
+      web::ws::Frame::Close(reason) => {
+        let mut close_tx = close_tx.borrow_mut();
+        let close_tx_opt = close_tx.take();
+        if let Some(close_tx) = close_tx_opt {
+          let _ = close_tx.send(true);
+        }
+
+        Some(web::ws::Message::Close(reason))
+      }
       _ => None,
     };
     futures::future::ready(Ok(response))
@@ -372,7 +419,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 

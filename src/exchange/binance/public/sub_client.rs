@@ -12,12 +12,13 @@ use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
 use std::cell::RefCell;
-use std::cmp::max;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
 use std::rc::Rc;
+use std::time::Duration;
+use std::usize;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
@@ -115,12 +116,13 @@ impl BinanceSubClient {
       Some(OrderBookUpdate {
         asks: parse_side(&parsed["a"])?,
         bids: parse_side(&parsed["b"])?,
-        update_id: last_update_id,
+        last_update_id,
+        first_update_id,
       })
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      book.borrow_mut().apply_update(update);
+      book.borrow_mut().apply_update(&update);
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
@@ -134,34 +136,43 @@ impl BinanceSubClient {
       book.borrow_mut().update_id = 1;
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
-      let mut processed =
+      let snapshot =
         Self::process_binance_depth(symbol, utils.clone(), first_update_id, market.clone())
           .await
           .ok()?;
 
-      let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
-      pending.sort_by_key(|u| u.update_id);
-
-      let future_id = pending
-        .last()
-        .map(|u| max(u.update_id, last_update_id))
-        .unwrap_or(last_update_id);
-
-      for update in pending {
-        if update.update_id > processed.update_id {
-          processed.apply_update(update);
+      let mut retries = 0;
+      let processed = loop {
+        if retries == 5 {
+          book.borrow_mut().update_id = 0;
+          return Some(());
         }
-      }
 
-      {
-        let mut subscribed = shared.subscribed.borrow_mut();
-        let mut book_mut = subscribed.get_mut(symbol)?.borrow_mut();
-        book_mut.asks = processed.asks;
-        book_mut.bids = processed.bids;
-        book_mut.update_id = match market {
-          MarketType::Future => future_id,
-          _ => processed.update_id,
-        };
+        let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
+
+        let idx = pending
+          .iter()
+          .position(|item| {
+            item.first_update_id <= snapshot.update_id + 1 &&
+            item.last_update_id  >= snapshot.update_id + 1
+          });
+
+        if idx.is_none() {
+          ntex::time::sleep(Duration::from_millis(100)).await;
+          retries += 1;
+          continue;
+        }
+
+        pending.drain(0..idx.unwrap());
+
+        break pending;
+      };
+
+      let mut book_bm = book.borrow_mut();
+      book_bm.asks = snapshot.asks;
+      book_bm.bids = snapshot.bids;
+      for update in processed {
+        book_bm.apply_update(&update);
       }
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
@@ -173,7 +184,9 @@ impl BinanceSubClient {
           return None;
         }
 
-        if first_update_id > book_mut.update_id + 1 {
+        if first_update_id > book_mut.update_id + 1 || 
+           last_update_id < book_mut.update_id + 1 
+        {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;

@@ -43,7 +43,8 @@ impl SubClient {
       Body::PublicIncreaseDepthsBatch(data) => {
         for item in data.items {
           let update = OrderBookUpdate {
-            update_id: 0,
+            last_update_id: 0,
+            first_update_id: 0,
             asks: item
               .asks
               .iter()
@@ -66,7 +67,7 @@ impl SubClient {
               .collect::<Vec<(Decimal, Decimal)>>(),
           };
 
-          book.apply_update(update);
+          book.apply_update(&update);
         }
       }
       _ => {}

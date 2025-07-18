@@ -45,28 +45,29 @@ impl Default for OrderBook {
 pub struct OrderBookUpdate {
   pub bids: Vec<(Decimal, Decimal)>,
   pub asks: Vec<(Decimal, Decimal)>,
-  pub update_id: u64,
+  pub first_update_id: u64,
+  pub last_update_id: u64,
 }
 
 impl OrderBook {
-  pub fn apply_update(&mut self, update: OrderBookUpdate) {
+  pub fn apply_update(&mut self, update: &OrderBookUpdate) {
     let bids_len = update.bids.len();
     let asks_len = update.asks.len();
 
-    for (price, qty) in update.bids {
-      let key = Reverse(price);
+    for (price, qty) in update.bids.iter() {
+      let key = Reverse(price.clone());
       if qty.eq(&dec!(0)) {
         self.bids.remove(&key);
       } else {
-        self.bids.insert(key, qty);
+        self.bids.insert(key, qty.clone());
       }
     }
 
-    for (price, qty) in update.asks {
+    for (price, qty) in update.asks.iter() {
       if qty.eq(&dec!(0)) {
         self.asks.remove(&price);
       } else {
-        self.asks.insert(price, qty);
+        self.asks.insert(price.clone(), qty.clone());
       }
     }
 
@@ -74,8 +75,8 @@ impl OrderBook {
       self.update_id += 1;
     }
 
-    if update.update_id > 0 {
-      self.update_id = update.update_id;
+    if update.last_update_id > 0 {
+      self.update_id = update.last_update_id;
     }
   }
 
