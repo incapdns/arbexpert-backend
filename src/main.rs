@@ -14,16 +14,9 @@ use futures::{
 };
 use mimalloc::MiMalloc;
 use ntex::{
-  Service,
-  channel::oneshot,
-  fn_service,
-  http::HttpService,
-  rt,
-  server::Server,
-  service::fn_factory_with_config,
-  util::BytesMut,
-  web::{self, App, HttpRequest, HttpResponse, middleware},
+  channel::oneshot, fn_service, http::{header, HttpService, Method}, rt, server::Server, service::fn_factory_with_config, util::BytesMut, web::{self, middleware, App, HttpRequest, HttpResponse}, Service
 };
+use ntex_cors::Cors;
 use rust_decimal::{Decimal, dec};
 use rustls::crypto::aws_lc_rs::default_provider;
 use serde::{Deserialize, Serialize};
@@ -99,10 +92,7 @@ async fn start_arbitrage(
 }
 
 #[web::get("/orderbook/{symbol}/futures")]
-async fn monitor_orderbook(
-  _: HttpRequest,
-  symbol: web::types::Path<String>,
-) -> HttpResponse {
+async fn monitor_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
   let gate = GateExchange::new().await;
 
   let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
@@ -480,6 +470,15 @@ async fn main() -> std::io::Result<()> {
         App::new()
           .state(global_state.clone())
           .wrap(middleware::Logger::default())
+          .wrap(
+            Cors::new() // <- Construct CORS middleware builder
+              .allowed_origin("https://www.arbexpert.com")
+              .allowed_origin("https://arbexpert.com")
+              .allowed_methods(vec![Method::GET, Method::POST])
+              .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE])
+              .max_age(3600)
+              .finish(),
+          )
           .service(web::resource("/ws").route(web::get().to(ws_index)))
           .service((
             start_arbitrage,
@@ -487,7 +486,7 @@ async fn main() -> std::io::Result<()> {
             symbols,
             start_monitor,
             list_arbitrage,
-            monitor_orderbook
+            monitor_orderbook,
           ))
           .service(
             web::resource("/resource2/index.html")
