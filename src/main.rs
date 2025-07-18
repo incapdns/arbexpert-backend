@@ -1,6 +1,6 @@
 use crate::{
-  base::exchange::{assets::{Asset, MarketType}},
-  exchange::mexc::MexcExchange,
+  base::exchange::assets::{Asset, MarketType},
+  exchange::{binance::BinanceExchange, gate::GateExchange, mexc::MexcExchange},
   utils::setup_exchanges,
   worker::{
     commands::{Request, StartArbitrage, StartMonitor},
@@ -93,6 +93,22 @@ async fn start_arbitrage(
     let _ = tx.send(Request::StartArbitrage(command)).await;
 
     HttpResponse::Ok().body(format!("Started!"))
+  } else {
+    HttpResponse::InternalServerError().body("Worker not found")
+  }
+}
+
+#[web::get("/orderbook/{symbol}/futures")]
+async fn monitor_arbitrage(
+  _: HttpRequest,
+  symbol: web::types::Path<String>,
+) -> HttpResponse {
+  let gate = GateExchange::new().await;
+
+  let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
+
+  if let Ok(orderbook) = result {
+    HttpResponse::Ok().body(format!("{:?}", orderbook))
   } else {
     HttpResponse::InternalServerError().body("Worker not found")
   }
