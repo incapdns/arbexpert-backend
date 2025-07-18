@@ -224,10 +224,6 @@ impl GateSubClient {
       {
         let mut book_mut = book.borrow_mut();
 
-        if last_update_id <= book_mut.update_id {
-          return None;
-        }
-
         if first_update_id > book_mut.update_id + 1 || 
            last_update_id < book_mut.update_id + 1 
         {
