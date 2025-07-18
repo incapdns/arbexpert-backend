@@ -99,7 +99,7 @@ async fn start_arbitrage(
 }
 
 #[web::get("/orderbook/{symbol}/futures")]
-async fn monitor_arbitrage(
+async fn monitor_orderbook(
   _: HttpRequest,
   symbol: web::types::Path<String>,
 ) -> HttpResponse {
@@ -487,6 +487,7 @@ async fn main() -> std::io::Result<()> {
             symbols,
             start_monitor,
             list_arbitrage,
+            monitor_orderbook
           ))
           .service(
             web::resource("/resource2/index.html")
