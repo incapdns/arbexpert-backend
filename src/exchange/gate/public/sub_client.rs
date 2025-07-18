@@ -228,7 +228,9 @@ impl GateSubClient {
           return None;
         }
 
-        if first_update_id > book_mut.update_id + 1 {
+        if first_update_id > book_mut.update_id + 1 || 
+           last_update_id < book_mut.update_id + 1 
+        {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
