@@ -5,7 +5,6 @@ use futures_util::StreamExt;
 use ntex::channel::mpsc;
 use ntex::tls::rustls::TlsConnector;
 use ntex::util::ByteString;
-use ntex::ws::WsSink;
 use ntex::{channel::mpsc::Sender, rt, time, util::Bytes, ws};
 use rustls::RootCertStore;
 use std::cell::RefCell;
@@ -107,14 +106,11 @@ where
       param_bm.take()
     };
     let this = self.get_mut();
-    let self_future = (this.callback)(param);
+    this.future = (this.callback)(param);
     let future = Pin::new(&mut this.future);
     match future.poll(cx) {
       Poll::Pending => Poll::Pending,
-      Poll::Ready(res) => {
-        this.future = self_future;
-        Poll::Ready(Some(res))
-      }
+      Poll::Ready(res) => Poll::Ready(Some(res)),
     }
   }
 }
@@ -270,6 +266,17 @@ impl WsClient {
 
         loop {
           select! {
+            pong_res = next_pong => {
+              if let None = pong_res {
+                (on_error)(format!("Internal error in pong"));
+                break;
+              }
+
+              if let Err(e) = pong_res.unwrap() {
+                (on_error)(format!("Ping error: {}", e));
+                break;
+              }
+            },
             maybe_cmd = rx.recv().fuse() => match maybe_cmd {
               Some(cmd) => {
                 ext_tasks.push(sink.send(cmd));
@@ -344,17 +351,6 @@ impl WsClient {
                 break;
               }
             }
-            pong_res = next_pong => {
-              if let None = pong_res {
-                (on_error)(format!("Internal error in pong"));
-                break;
-              }
-
-              if let Err(e) = pong_res.unwrap() {
-                (on_error)(format!("Ping error: {}", e));
-                break;
-              }
-            },
             ext_res = next_task(&mut ext_tasks).fuse() => match ext_res {
               None => {
                 (on_error)("Closed channel".to_string());
