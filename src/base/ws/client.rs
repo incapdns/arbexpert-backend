@@ -266,17 +266,6 @@ impl WsClient {
 
         loop {
           select! {
-            pong_res = next_pong => {
-              if let None = pong_res {
-                (on_error)(format!("Internal error in pong"));
-                break;
-              }
-
-              if let Err(e) = pong_res.unwrap() {
-                (on_error)(format!("Ping error: {}", e));
-                break;
-              }
-            },
             maybe_cmd = rx.recv().fuse() => match maybe_cmd {
               Some(cmd) => {
                 ext_tasks.push(sink.send(cmd));
@@ -304,6 +293,17 @@ impl WsClient {
               ping_config.set_ready(false);
               next_ping = ping.next().fuse();
               next_ping_interval = ping_interval.next().fuse();
+            },
+            pong_res = next_pong => {
+              if let None = pong_res {
+                (on_error)(format!("Internal error in pong"));
+                break;
+              }
+
+              if let Err(e) = pong_res.unwrap() {
+                (on_error)(format!("Ping error: {}", e));
+                break;
+              }
             },
             message = rx_ws.next().fuse() => match message {
               Some(result) => {
