@@ -52,7 +52,7 @@ struct FutureDepthSnapshot {
 }
 
 static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
-  Ratelimiter::builder(200, Duration::from_secs(300))
+  Ratelimiter::builder(200, Duration::from_secs(100))
     .max_tokens(200)
     .initial_available(200)
     .build()
