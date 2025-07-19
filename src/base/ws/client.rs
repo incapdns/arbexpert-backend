@@ -304,18 +304,19 @@ impl WsClient {
 
     //COMECA AQUI
 
-    let sink = ws_client.sink();
     rt::spawn({
       let on_error = self.on_error.clone();
       let connect_status = self.connect_status.clone();
       let ping_interval = self.options.ping_interval;
 
-      let sink = sink.clone();
       let on_binary = self.on_binary.clone();
       let on_message = self.on_message.clone();
       let on_close = self.on_close.clone();
 
       async move {
+        let seal = ws_client.seal();
+        let sink = seal.sink();
+
         // Our struct client tasks
         let mut client_tasks = FuturesUnordered::new();
 
@@ -347,7 +348,7 @@ impl WsClient {
         });
         let mut next_pong = pong.next().fuse();
 
-        let mut rx_ws = ws_client.seal().receiver();
+        let mut rx_ws = seal.receiver();
 
         let error = loop {
           select! {
