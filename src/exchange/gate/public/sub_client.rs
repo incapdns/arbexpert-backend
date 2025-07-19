@@ -56,13 +56,8 @@ struct FutureDepthSnapshot {
 }
 
 static CONNECT_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::with_period(Duration::from_secs(500)).unwrap();
-  let quota = quota.allow_burst(NonZero::new(100).unwrap());
-  RateLimiter::direct_with_clock(quota, QuantaClock::default())
-});
-
-static SEND_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::per_second(NonZero::new(5).unwrap());
+  let quota = Quota::with_period(Duration::from_secs(400)).unwrap();
+  let quota = quota.allow_burst(NonZero::new(200).unwrap());
   RateLimiter::direct_with_clock(quota, QuantaClock::default())
 });
 
@@ -277,6 +272,9 @@ impl GateSubClient {
 
     let (m1, m2) = (market_cl.clone(), market_cl);
 
+    let quota = Quota::per_second(NonZero::new(5).unwrap());
+    let send_limiter = RateLimiter::direct_with_clock(quota, QuantaClock::default());
+
     GateSubClient {
       base: SubClient::new(
         ws_url,
@@ -295,7 +293,7 @@ impl GateSubClient {
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         &*CONNECT_LIMITER,
-        &*SEND_LIMITER
+        send_limiter
       ),
       init
     }

@@ -33,7 +33,7 @@ pub struct SubClient {
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
   connect_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
-  send_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
+  send_limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
 }
 
 #[derive(Clone)]
@@ -52,7 +52,7 @@ impl SubClient {
     subscribe: impl Fn(String) -> SubscribeRet + 'static,
     unsubscribe: impl Fn(String) -> UnsubscribeRet + 'static,
     connect_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
-    send_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
+    send_limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
   ) -> Self
   where
     MessageRet: Future<Output = ()> + 'static,

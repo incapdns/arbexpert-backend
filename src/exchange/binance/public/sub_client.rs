@@ -48,11 +48,6 @@ static CONNECT_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> 
   RateLimiter::direct_with_clock(quota, QuantaClock::default())
 });
 
-static SEND_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::per_second(NonZero::new(5).unwrap());
-  RateLimiter::direct_with_clock(quota, QuantaClock::default())
-});
-
 impl BinanceSubClient {
   async fn process_binance_depth(
     symbol: &str,
@@ -240,6 +235,9 @@ impl BinanceSubClient {
 
     let (ic1, ic2) = (init.clone(), init.clone());
 
+    let quota = Quota::per_second(NonZero::new(5).unwrap());
+    let send_limiter = RateLimiter::direct_with_clock(quota, QuantaClock::default());
+
     BinanceSubClient {
       base: SubClient::new(
         ws_url,
@@ -258,7 +256,7 @@ impl BinanceSubClient {
         Self::subscribe,
         Self::unsubscribe,
         &*CONNECT_LIMITER,
-        &*SEND_LIMITER
+        send_limiter
       ),
       init,
     }
