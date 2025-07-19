@@ -33,7 +33,7 @@ impl BinanceExchange {
     // 2) Se houver client com < 7 subscriptions, usa ele
     if let Some(client) = {
       let guard = sub_clients.borrow();
-      guard.iter().find(|c| c.subscribed_count() < 35).cloned()
+      guard.iter().find(|c| c.subscribed_count() < 50).cloned()
     } {
       return client.watch(symbol).await;
     }
