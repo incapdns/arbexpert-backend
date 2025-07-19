@@ -260,7 +260,17 @@ impl WsClient {
       .map_err(|e| format!("Build error: {:?}", e))?
       .connect()
       .await
-      .map_err(|e| format!("Connect error: {:?}", e))?;
+      .map_err(|e| format!("Connect error: {:?}", e));
+
+    let Ok(ws_client) = ws_client else {
+      self.connect_status.store(
+        ConnectStatusRepr(ConnectStatus::Disconnected as u8),
+        Ordering::Relaxed,
+      );
+      let mut connecting_bm = self.connecting.borrow_mut();
+      connecting_bm.clear();
+      return not_connected();
+    };
 
     self.connect_status.store(
       ConnectStatusRepr(ConnectStatus::Connected as u8),
