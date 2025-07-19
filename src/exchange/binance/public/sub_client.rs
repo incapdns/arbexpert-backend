@@ -9,7 +9,6 @@ use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
 use governor::Quota;
 use governor::RateLimiter;
-use governor::clock::Clock;
 use governor::clock::QuantaClock;
 use governor::state::InMemoryState;
 use governor::state::NotKeyed;
@@ -43,11 +42,14 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-static CLOCK: Lazy<QuantaClock> = Lazy::new(|| QuantaClock::default());
-
-static RATE_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
+static CONNECT_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
   let quota = Quota::with_period(Duration::from_secs(300)).unwrap();
   let quota = quota.allow_burst(NonZero::new(300).unwrap());
+  RateLimiter::direct_with_clock(quota, QuantaClock::default())
+});
+
+static SEND_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
+  let quota = Quota::per_second(NonZero::new(5).unwrap());
   RateLimiter::direct_with_clock(quota, QuantaClock::default())
 });
 
@@ -255,6 +257,8 @@ impl BinanceSubClient {
         },
         Self::subscribe,
         Self::unsubscribe,
+        &*CONNECT_LIMITER,
+        &*SEND_LIMITER
       ),
       init,
     }
@@ -297,16 +301,7 @@ impl BinanceSubClient {
   }
 
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    let now = CLOCK.now();
-
-    loop {
-      match RATE_LIMITER.check() {
-        Ok(()) => return self.base.watch(symbol).await,
-        Err(e) => {
-          ntex::time::sleep(e.wait_time_from(now)).await;
-        }
-      }
-    }
+    self.base.watch(symbol).await
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
