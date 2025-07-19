@@ -22,7 +22,7 @@ impl MexcExchange {
       .public
       .sub_clients
       .iter_mut()
-      .find(|c| c.subscribed_count() < 200)
+      .find(|c| c.subscribed_count() < 50)
     {
       return client.watch(symbol).await;
     }
