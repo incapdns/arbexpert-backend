@@ -154,10 +154,14 @@ impl TryFrom<ConnectStatusRepr> for ConnectStatus {
   type Error = ();
 
   fn try_from(value: ConnectStatusRepr) -> Result<Self, Self::Error> {
+    let connected=  ConnectStatus::Connected as u8;
+    let connecting=  ConnectStatus::Connecting as u8;
+    let disconnected=  ConnectStatus::Disconnected as u8;
+
     match value.0 {
-      0 => Ok(ConnectStatus::Disconnected),
-      1 => Ok(ConnectStatus::Connecting),
-      2 => Ok(ConnectStatus::Connected),
+      x if x == disconnected => Ok(ConnectStatus::Disconnected),
+      x if x == connecting => Ok(ConnectStatus::Connecting),
+      x if x == connected => Ok(ConnectStatus::Connected),
       _ => Err(()),
     }
   }
@@ -272,6 +276,9 @@ impl WsClient {
       return not_connected();
     };
 
+    let (tx, rx) = mpsc::channel::<ws::Message>();
+    self.sender = Some(tx.clone());
+
     self.connect_status.store(
       ConnectStatusRepr(ConnectStatus::Connected as u8),
       Ordering::Relaxed,
@@ -286,9 +293,6 @@ impl WsClient {
         let _ = item.send(());
       }
     }
-
-    let (tx, rx) = mpsc::channel::<ws::Message>();
-    self.sender = Some(tx.clone());
 
     async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
       if tasks.len() > 0 {
