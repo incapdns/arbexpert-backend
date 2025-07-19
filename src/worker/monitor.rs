@@ -1,5 +1,5 @@
 use crate::utils::get_price;
-use crate::Arbitrage;
+use crate::{Arbitrage, ArbitrageSnaphot};
 use crate::base::exchange::Exchange;
 use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
@@ -106,6 +106,8 @@ async fn spawn_live_calc<'a>(
         let _ = state.ws_tx.try_broadcast(json);
       }
     }
+  } else {
+    *snapshot = ArbitrageSnaphot::default();
   }
 
   Reenter {

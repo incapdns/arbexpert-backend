@@ -14,7 +14,15 @@ use futures::{
 };
 use mimalloc::MiMalloc;
 use ntex::{
-  channel::oneshot, fn_service, http::{header, HttpService, Method}, rt, server::Server, service::fn_factory_with_config, util::BytesMut, web::{self, middleware, App, HttpRequest, HttpResponse}, Service
+  Service,
+  channel::oneshot,
+  fn_service,
+  http::{HttpService, Method, header},
+  rt,
+  server::Server,
+  service::fn_factory_with_config,
+  util::BytesMut,
+  web::{self, App, HttpRequest, HttpResponse, middleware},
 };
 use ntex_cors::Cors;
 use rust_decimal::{Decimal, dec};
@@ -92,7 +100,10 @@ async fn start_arbitrage(
 }
 
 #[web::get("/orderbook/{symbol}/futures")]
-async fn monitor_futures_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
+async fn monitor_futures_orderbook(
+  _: HttpRequest,
+  symbol: web::types::Path<String>,
+) -> HttpResponse {
   let gate = GateExchange::new().await;
 
   let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
@@ -147,6 +158,21 @@ pub struct ArbitrageSnaphot {
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal,
+}
+
+impl Default for ArbitrageSnaphot {
+  fn default() -> Self {
+    ArbitrageSnaphot {
+      base: format!(""),
+      quote: format!(""),
+      spot_ask: dec!(0),
+      spot_bid: dec!(0),
+      future_ask: dec!(0),
+      future_bid: dec!(0),
+      entry_percent: dec!(0),
+      exit_percent: dec!(0),
+    }
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -488,7 +514,11 @@ async fn main() -> std::io::Result<()> {
               .allowed_origin("https://www.arbexpert.com")
               .allowed_origin("https://arbexpert.com")
               .allowed_methods(vec![Method::GET, Method::POST])
-              .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE])
+              .allowed_headers(vec![
+                header::AUTHORIZATION,
+                header::ACCEPT,
+                header::CONTENT_TYPE,
+              ])
               .max_age(3600)
               .finish(),
           )
