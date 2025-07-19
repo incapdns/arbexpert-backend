@@ -1,13 +1,17 @@
+use atomic::Atomic;
+use bytemuck::{Pod, Zeroable};
 use futures::future::pending;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, Stream, select};
 use futures_util::StreamExt;
-use ntex::channel::mpsc;
+use ntex::channel::{mpsc, oneshot};
 use ntex::tls::rustls::TlsConnector;
 use ntex::util::ByteString;
 use ntex::{channel::mpsc::Sender, rt, time, util::Bytes, ws};
 use rustls::RootCertStore;
 use std::cell::RefCell;
+use std::mem;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -115,6 +119,18 @@ where
   }
 }
 
+#[repr(u8)]
+#[derive(PartialEq)]
+enum ConnectStatus {
+  Connecting = 0,
+  Connected = 1,
+  Disconnected = 2,
+}
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Pod, Zeroable)]
+pub struct ConnectStatusRepr(pub u8);
+
 pub struct WsClient {
   url: String,
   options: WsOptions,
@@ -124,7 +140,27 @@ pub struct WsClient {
   on_connected: Rc<dyn Fn()>,
   on_binary: Rc<dyn Fn(Vec<u8>) -> Pin<Box<dyn Future<Output = ()>>>>,
   sender: Option<Sender<ws::Message>>,
-  is_connected: Rc<AtomicBool>,
+  connect_status: Rc<Atomic<ConnectStatusRepr>>,
+  connecting: RefCell<Vec<oneshot::Sender<()>>>,
+}
+
+impl From<ConnectStatus> for ConnectStatusRepr {
+  fn from(status: ConnectStatus) -> Self {
+    ConnectStatusRepr(status as u8)
+  }
+}
+
+impl TryFrom<ConnectStatusRepr> for ConnectStatus {
+  type Error = ();
+
+  fn try_from(value: ConnectStatusRepr) -> Result<Self, Self::Error> {
+    match value.0 {
+      0 => Ok(ConnectStatus::Disconnected),
+      1 => Ok(ConnectStatus::Connecting),
+      2 => Ok(ConnectStatus::Connected),
+      _ => Err(()),
+    }
+  }
 }
 
 impl WsClient {
@@ -156,12 +192,19 @@ impl WsClient {
       on_connected: Rc::from(on_connected),
       on_binary: on_binary_pin,
       sender: None,
-      is_connected: Rc::new(AtomicBool::new(false)),
+      connect_status: Rc::new(Atomic::new(ConnectStatusRepr(
+        ConnectStatus::Disconnected as u8,
+      ))),
+      connecting: RefCell::new(vec![]),
     }
   }
 
   pub fn is_connected(&self) -> bool {
-    self.is_connected.load(Ordering::Relaxed)
+    self.connect_status.load(Ordering::Relaxed).try_into() == Ok(ConnectStatus::Connected)
+  }
+
+  pub fn is_connecting(&self) -> bool {
+    self.connect_status.load(Ordering::Relaxed).try_into() == Ok(ConnectStatus::Connecting)
   }
 
   pub async fn close(&self) -> Result<(), Box<dyn Error>> {
@@ -175,6 +218,23 @@ impl WsClient {
   pub async fn connect(&mut self) -> Result<(), Box<dyn Error>> {
     if self.is_connected() {
       return Ok(());
+    }
+
+    if self.is_connecting() {
+      let rx = {
+        let (tx, rx) = oneshot::channel();
+        let mut connecting_bm = self.connecting.borrow_mut();
+        connecting_bm.push(tx);
+        rx
+      };
+      let result = rx.await;
+      let result = result.map_err(|_| not_connected().err().unwrap());
+      return result;
+    } else {
+      self.connect_status.store(
+        ConnectStatusRepr(ConnectStatus::Connecting as u8),
+        Ordering::Relaxed,
+      );
     }
 
     let url = Url::parse(&self.url)?;
@@ -202,9 +262,20 @@ impl WsClient {
       .await
       .map_err(|e| format!("Connect error: {:?}", e))?;
 
-    self.is_connected.store(true, Ordering::Relaxed);
+    self.connect_status.store(
+      ConnectStatusRepr(ConnectStatus::Connected as u8),
+      Ordering::Relaxed,
+    );
 
     (self.on_connected)();
+
+    {
+      let mut connecting_bm = self.connecting.borrow_mut();
+      let connecting = mem::take(connecting_bm.deref_mut());
+      for item in connecting {
+        let _ = item.send(());
+      }
+    }
 
     let (tx, rx) = mpsc::channel::<ws::Message>();
     self.sender = Some(tx.clone());
@@ -222,7 +293,7 @@ impl WsClient {
     let sink = ws_client.sink();
     rt::spawn({
       let on_error = self.on_error.clone();
-      let is_connected = self.is_connected.clone();
+      let connect_status = self.connect_status.clone();
       let ping_interval = self.options.ping_interval;
 
       let sink = sink.clone();
@@ -264,30 +335,15 @@ impl WsClient {
 
         let mut rx_ws = ws_client.seal().receiver();
 
-        loop {
+        let error = loop {
           select! {
-            maybe_cmd = rx.recv().fuse() => match maybe_cmd {
-              Some(cmd) => {
-                ext_tasks.push(sink.send(cmd));
-              }
-              None => {
-                (on_error)("Closed channel [maybe_cmd]".to_string());
-                break;
-              }
-            },
-            _ = next_ping_interval => {
-              ping_config.set_ready(true);
-              ping_config.set_param(());
-            },
             ping_res = next_ping => {
               if let None = ping_res {
-                (on_error)(format!("Internal error in ping"));
-                break;
+                break format!("Internal error in ping");
               }
 
               if let Err(e) = ping_res.unwrap() {
-                (on_error)(format!("Ping error: {}", e));
-                break;
+                break format!("Ping error: {}", e);
               }
 
               ping_config.set_ready(false);
@@ -296,13 +352,11 @@ impl WsClient {
             },
             pong_res = next_pong => {
               if let None = pong_res {
-                (on_error)(format!("Internal error in pong"));
-                break;
+                break format!("Internal error in pong");
               }
 
               if let Err(e) = pong_res.unwrap() {
-                (on_error)(format!("Ping error: {}", e));
-                break;
+                break format!("Ping error: {}", e);
               }
             },
             message = rx_ws.next().fuse() => match message {
@@ -316,8 +370,7 @@ impl WsClient {
                     if let Ok(txt) = str {
                       client_tasks.push((on_message)(txt));
                     } else {
-                      (on_error)("Parser utf8 failed".to_string());
-                      break;
+                      break "Parser utf8 failed".to_string();
                     }
                   }
                   Ok(ws::Frame::Ping(p)) => {
@@ -326,48 +379,58 @@ impl WsClient {
                     next_pong = pong.next().fuse();
                   }
                   Ok(ws::Frame::Close(e)) => {
-                    (on_error)(format!("Closed socket: {:?}", e));
-                    (on_close)();
-                    break;
+                    break format!("Closed socket: {:?}", e);
                   }
                   Ok(ntex::ws::Frame::Continuation(_)) => {
-                    (on_error)(format!("Unsupported continuation"));
-                    break;
+                    break format!("Unsupported continuation");
                   }
                   Ok(ntex::ws::Frame::Pong(_)) => {}
                   Err(e) => {
-                    (on_error)(format!("WebSocket error: {:?}", e));
-                    break;
+                    break format!("WebSocket error: {:?}", e);
                   }
                 }
               }
               None => {
-                (on_error)("Closed channel [message]".to_string());
-                break;
+                break "Closed channel [message]".to_string();
               }
+            },
+            maybe_cmd = rx.recv().fuse() => match maybe_cmd {
+              Some(cmd) => {
+                ext_tasks.push(sink.send(cmd));
+              }
+              None => {
+                break "Closed channel [maybe_cmd]".to_string();
+              }
+            },
+            _ = next_ping_interval => {
+              ping_config.set_ready(true);
+              ping_config.set_param(());
             },
             client_res = next_task(&mut client_tasks).fuse() => {
               if let None = client_res {
-                (on_error)("Wsclient failed".to_string());
-                break;
+                break "Wsclient failed".to_string();
               }
             }
             ext_res = next_task(&mut ext_tasks).fuse() => match ext_res {
               None => {
-                (on_error)("Closed channel [ext_res]".to_string());
-                break;
+                break "Closed channel [ext_res]".to_string();
               },
               Some(result) => {
                 if let Err(e) = result {
-                  (on_error)(format!("Send external failed: {}", e));
-                  break;
+                  break format!("Send external failed: {}", e);
                 }
               }
             }
           }
-        }
+        };
 
-        is_connected.store(false, Ordering::Relaxed);
+        connect_status.store(
+          ConnectStatusRepr(ConnectStatus::Disconnected as u8),
+          Ordering::Relaxed,
+        );
+
+        on_error(error);
+        on_close();
       }
     });
 
@@ -386,4 +449,8 @@ impl WsClient {
       Err("WebSocket not connected".into())
     }
   }
+}
+
+fn not_connected() -> Result<(), Box<dyn Error>> {
+  Err("Not connected".into())
 }

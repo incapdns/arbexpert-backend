@@ -37,6 +37,8 @@ mimalloc = "0.1.47"
 async-broadcast = "0.7.2"
 async-trait = "0.1.88"
 ntex-cors = "2.1.0"
+atomic = { version = "0.6.1", features = ["std"] }
+bytemuck = { version = "1.21.1", features = ["derive"] }
 
 [build-dependencies]
 prost-build = "0.14.1"
