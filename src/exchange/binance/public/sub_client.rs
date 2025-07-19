@@ -7,12 +7,8 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
-use governor::Quota;
-use governor::RateLimiter;
-use governor::clock::QuantaClock;
-use governor::state::InMemoryState;
-use governor::state::NotKeyed;
 use once_cell::sync::Lazy;
+use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::Value;
@@ -22,7 +18,6 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
-use std::num::NonZero;
 use std::rc::Rc;
 use std::time::Duration;
 use std::usize;
@@ -42,10 +37,12 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-static CONNECT_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::with_period(Duration::from_secs(300)).unwrap();
-  let quota = quota.allow_burst(NonZero::new(300).unwrap());
-  RateLimiter::direct_with_clock(quota, QuantaClock::default())
+static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
+  Ratelimiter::builder(300, Duration::from_secs(300))
+    .max_tokens(300)
+    .initial_available(300)
+    .build()
+    .unwrap()
 });
 
 impl BinanceSubClient {
@@ -235,8 +232,11 @@ impl BinanceSubClient {
 
     let (ic1, ic2) = (init.clone(), init.clone());
 
-    let quota = Quota::per_second(NonZero::new(5).unwrap());
-    let send_limiter = RateLimiter::direct_with_clock(quota, QuantaClock::default());
+    let send_limiter = Ratelimiter::builder(5, Duration::from_secs(1))
+      .max_tokens(5)
+      .initial_available(5)
+      .build()
+      .unwrap();
 
     BinanceSubClient {
       base: SubClient::new(
@@ -256,7 +256,7 @@ impl BinanceSubClient {
         Self::subscribe,
         Self::unsubscribe,
         &*CONNECT_LIMITER,
-        send_limiter
+        send_limiter,
       ),
       init,
     }

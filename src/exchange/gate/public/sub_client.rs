@@ -7,11 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
-use governor::clock::QuantaClock;
-use governor::state::InMemoryState;
-use governor::state::NotKeyed;
-use governor::Quota;
-use governor::RateLimiter;
+use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::Value;
@@ -55,10 +51,12 @@ struct FutureDepthSnapshot {
   asks: Vec<FutureDepthSnapshotItem>,
 }
 
-static CONNECT_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::with_period(Duration::from_secs(400)).unwrap();
-  let quota = quota.allow_burst(NonZero::new(200).unwrap());
-  RateLimiter::direct_with_clock(quota, QuantaClock::default())
+static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
+  Ratelimiter::builder(200, Duration::from_secs(300))
+    .max_tokens(200)
+    .initial_available(200)
+    .build()
+    .unwrap()
 });
 
 impl GateSubClient {
@@ -272,8 +270,11 @@ impl GateSubClient {
 
     let (m1, m2) = (market_cl.clone(), market_cl);
 
-    let quota = Quota::per_second(NonZero::new(5).unwrap());
-    let send_limiter = RateLimiter::direct_with_clock(quota, QuantaClock::default());
+    let send_limiter = Ratelimiter::builder(5, Duration::from_secs(1))
+      .max_tokens(5)
+      .initial_available(5)
+      .build()
+      .unwrap();
 
     GateSubClient {
       base: SubClient::new(

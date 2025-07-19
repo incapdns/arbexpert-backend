@@ -1,13 +1,8 @@
 use crate::base::exchange::order::OrderBook;
 use crate::base::ws::client::WsClient;
 use crate::base::ws::client::WsOptions;
-use governor::RateLimiter;
-use governor::clock::Clock;
-use governor::clock::QuantaClock;
-use governor::state::InMemoryState;
-use governor::state::NotKeyed;
 use ntex::channel::oneshot;
-use once_cell::sync::Lazy;
+use ratelimit::Ratelimiter;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
@@ -23,8 +18,6 @@ pub type Subscribed = Rc<RefCell<HashMap<String, SharedBook>>>;
 
 type DynString = Pin<Box<dyn Future<Output = Result<String, Box<dyn Error>>>>>;
 
-static CLOCK: Lazy<QuantaClock> = Lazy::new(|| QuantaClock::default());
-
 pub struct SubClient {
   ws: RefCell<WsClient>,
   pub pending: Pending,
@@ -32,8 +25,8 @@ pub struct SubClient {
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
-  connect_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
-  send_limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
+  connect_limiter: &'static Ratelimiter,
+  send_limiter: Ratelimiter,
 }
 
 #[derive(Clone)]
@@ -51,8 +44,8 @@ impl SubClient {
     on_fail: impl Fn() + 'static,
     subscribe: impl Fn(String) -> SubscribeRet + 'static,
     unsubscribe: impl Fn(String) -> UnsubscribeRet + 'static,
-    connect_limiter: &'static RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
-    send_limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock>,
+    connect_limiter: &'static Ratelimiter,
+    send_limiter: Ratelimiter,
   ) -> Self
   where
     MessageRet: Future<Output = ()> + 'static,
@@ -209,16 +202,14 @@ impl SubClient {
 
   async fn send(&self, json: String) -> Result<(), Box<dyn Error>> {
     loop {
-      let now = CLOCK.now();
-
-      match self.send_limiter.check() {
+      match self.send_limiter.try_wait() {
         Ok(()) => {
           let ws_bm = self.ws.borrow_mut();
           ws_bm.send(json)?;
           return Ok(())
         }
-        Err(e) => {
-          ntex::time::sleep(e.wait_time_from(now)).await;
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
         }
       }
     }
@@ -233,9 +224,7 @@ impl SubClient {
       }
 
       let (result, mut connecting) = loop {
-        let now = CLOCK.now();
-
-        match self.connect_limiter.check() {
+        match self.connect_limiter.try_wait() {
           Ok(()) => {
             let result = ws.connect().await;
             break (result, {
@@ -243,8 +232,8 @@ impl SubClient {
               mem::take(connecting_bm.deref_mut())
             });
           }
-          Err(e) => {
-            ntex::time::sleep(e.wait_time_from(now)).await;
+          Err(duration) => {
+            ntex::time::sleep(duration).await;
           }
         }
       };
