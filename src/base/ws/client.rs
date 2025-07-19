@@ -330,13 +330,14 @@ impl WsClient {
                     (on_close)();
                     break;
                   }
+                  Ok(ntex::ws::Frame::Continuation(_)) => {
+                    (on_error)(format!("Unsupported continuation"));
+                    break;
+                  }
+                  Ok(ntex::ws::Frame::Pong(_)) => {}
                   Err(e) => {
                     (on_error)(format!("WebSocket error: {:?}", e));
                     break;
-                  }
-                  _ => {
-                    (on_error)(format!("Unknown error"));
-                    break
                   }
                 }
               }
