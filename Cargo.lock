@@ -131,7 +131,6 @@ dependencies = [
  "bytemuck",
  "chrono",
  "compio",
- "core_affinity",
  "downcast-rs",
  "env_logger",
  "futures",
