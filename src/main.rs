@@ -9,6 +9,7 @@ use crate::{
   },
 };
 use async_channel::unbounded;
+use core_affinity::set_for_current;
 use futures::{
   FutureExt, StreamExt, TryStreamExt, future::pending, select, stream::FuturesUnordered,
 };
@@ -360,6 +361,9 @@ async fn symbols() -> String {
 
 async fn on_worker_start(global_state: Arc<GlobalState>) -> Result<(), String> {
   let worker_id = global_state.last_id.fetch_add(1, Ordering::Relaxed);
+
+  let cores = core_affinity::get_core_ids().expect("Failed to get core IDs");
+  set_for_current(cores[worker_id as usize]);
 
   let (tx, rx) = unbounded();
 
