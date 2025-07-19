@@ -464,7 +464,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
