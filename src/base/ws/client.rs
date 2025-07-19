@@ -271,7 +271,7 @@ impl WsClient {
                 ext_tasks.push(sink.send(cmd));
               }
               None => {
-                (on_error)("Closed channel".to_string());
+                (on_error)("Closed channel [maybe_cmd]".to_string());
                 break;
               }
             },
@@ -342,7 +342,7 @@ impl WsClient {
                 }
               }
               None => {
-                (on_error)("Closed channel".to_string());
+                (on_error)("Closed channel [message]".to_string());
                 break;
               }
             },
@@ -354,7 +354,7 @@ impl WsClient {
             }
             ext_res = next_task(&mut ext_tasks).fuse() => match ext_res {
               None => {
-                (on_error)("Closed channel".to_string());
+                (on_error)("Closed channel [ext_res]".to_string());
                 break;
               },
               Some(result) => {
