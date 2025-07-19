@@ -59,7 +59,7 @@ struct FutureDepthSnapshot {
 static CLOCK: Lazy<QuantaClock> = Lazy::new(|| QuantaClock::default());
 
 static RATE_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
-  let quota = Quota::with_period(Duration::from_secs(500)).unwrap();
+  let quota = Quota::with_period(Duration::from_secs(100)).unwrap();
   let quota = quota.allow_burst(NonZero::new(500).unwrap());
   RateLimiter::direct_with_clock(quota, QuantaClock::default())
 });
