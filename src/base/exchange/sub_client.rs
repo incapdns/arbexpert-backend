@@ -211,7 +211,7 @@ impl SubClient {
     loop {
       let now = CLOCK.now();
 
-      match self.connect_limiter.check() {
+      match self.send_limiter.check() {
         Ok(()) => {
           let ws_bm = self.ws.borrow_mut();
           ws_bm.send(json)?;
