@@ -7,6 +7,13 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
+use governor::Quota;
+use governor::RateLimiter;
+use governor::clock::Clock;
+use governor::clock::QuantaClock;
+use governor::state::InMemoryState;
+use governor::state::NotKeyed;
+use once_cell::sync::Lazy;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,6 +23,7 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
+use std::num::NonZero;
 use std::rc::Rc;
 use std::time::Duration;
 use std::usize;
@@ -34,6 +42,14 @@ struct DepthSnapshot {
   bids: Vec<(Decimal, Decimal)>,
   asks: Vec<(Decimal, Decimal)>,
 }
+
+static CLOCK: Lazy<QuantaClock> = Lazy::new(|| QuantaClock::default());
+
+static RATE_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
+  let quota = Quota::with_period(Duration::from_secs(500)).unwrap();
+  let quota = quota.allow_burst(NonZero::new(500).unwrap());
+  RateLimiter::direct_with_clock(quota, QuantaClock::default())
+});
 
 impl BinanceSubClient {
   async fn process_binance_depth(
@@ -150,12 +166,10 @@ impl BinanceSubClient {
 
         let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
 
-        let idx = pending
-          .iter()
-          .position(|item| {
-            item.first_update_id <= snapshot.update_id + 1 &&
-            item.last_update_id  >= snapshot.update_id + 1
-          });
+        let idx = pending.iter().position(|item| {
+          item.first_update_id <= snapshot.update_id + 1
+            && item.last_update_id >= snapshot.update_id + 1
+        });
 
         if idx.is_none() {
           ntex::time::sleep(Duration::from_millis(100)).await;
@@ -180,9 +194,7 @@ impl BinanceSubClient {
       {
         let mut book_mut = book.borrow_mut();
 
-        if first_update_id > book_mut.update_id + 1 || 
-           last_update_id < book_mut.update_id + 1 
-        {
+        if first_update_id > book_mut.update_id + 1 || last_update_id < book_mut.update_id + 1 {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
@@ -285,7 +297,16 @@ impl BinanceSubClient {
   }
 
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    self.base.watch(symbol).await
+    let now = CLOCK.now();
+
+    loop {
+      match RATE_LIMITER.check() {
+        Ok(()) => return self.base.watch(symbol).await,
+        Err(e) => {
+          ntex::time::sleep(e.wait_time_from(now)).await;
+        }
+      }
+    }
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {

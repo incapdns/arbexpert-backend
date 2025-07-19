@@ -7,6 +7,12 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
+use governor::clock::Clock;
+use governor::clock::QuantaClock;
+use governor::state::InMemoryState;
+use governor::state::NotKeyed;
+use governor::Quota;
+use governor::RateLimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,10 +22,12 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
+use std::num::NonZero;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use once_cell::sync::Lazy;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
@@ -47,6 +55,14 @@ struct FutureDepthSnapshot {
   bids: Vec<FutureDepthSnapshotItem>,
   asks: Vec<FutureDepthSnapshotItem>,
 }
+
+static CLOCK: Lazy<QuantaClock> = Lazy::new(|| QuantaClock::default());
+
+static RATE_LIMITER: Lazy<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> = Lazy::new(|| {
+  let quota = Quota::with_period(Duration::from_secs(500)).unwrap();
+  let quota = quota.allow_burst(NonZero::new(500).unwrap());
+  RateLimiter::direct_with_clock(quota, QuantaClock::default())
+});
 
 impl GateSubClient {
   async fn process_gate_depth(
@@ -348,7 +364,16 @@ impl GateSubClient {
   }
 
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    self.base.watch(symbol).await
+    let now = CLOCK.now();
+
+    loop {
+      match RATE_LIMITER.check() {
+        Ok(()) => return self.base.watch(symbol).await,
+        Err(e) => {
+          ntex::time::sleep(e.wait_time_from(now)).await;
+        }
+      }
+    }
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
