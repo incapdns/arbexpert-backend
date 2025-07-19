@@ -323,8 +323,8 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         .await;
     }
 
-    if i % 20 == 0 {
-      ntex::time::sleep(Duration::from_secs(2)).await;
+    if i % 15 == 0 {
+      ntex::time::sleep(Duration::from_secs(5)).await;
     }
 
     i += 1;
