@@ -37,10 +37,10 @@ pub async fn worker_loop(
   loop {
     macros::select! {
       req = rx.recv() => {
-        let req = req.map_err(|err| Box::new(err))?;
+        let req = req.map_err(|err| Box::new(err));
         tasks.push(
           process_request(
-            req,
+            req.unwrap(),
             &exchanges,
             state.clone()
           )
