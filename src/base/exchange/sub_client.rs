@@ -31,7 +31,7 @@ pub struct SubClient {
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
   connect_limiter: Arc<Ratelimiter>,
-  send_limiter: Ratelimiter,
+  send_limiter: Arc<Ratelimiter>,
 }
 
 #[derive(Clone)]
@@ -50,7 +50,7 @@ impl SubClient {
     subscribe: impl Fn(String) -> SubscribeRet + 'static,
     unsubscribe: impl Fn(String) -> UnsubscribeRet + 'static,
     connect_limiter: Arc<Ratelimiter>,
-    send_limiter: Ratelimiter,
+    send_limiter: Arc<Ratelimiter>,
   ) -> Self
   where
     MessageRet: Future<Output = ()> + 'static,

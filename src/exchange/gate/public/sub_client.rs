@@ -55,10 +55,20 @@ struct FutureDepthSnapshot {
 pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(200, Duration::from_secs(100))
-      .max_tokens(1)
+      .max_tokens(200)
       .initial_available(200)
       .build()
       .unwrap(),
+  )
+});
+
+pub static SEND_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(5, Duration::from_secs(1))
+      .max_tokens(5)
+      .initial_available(5)
+      .build()
+      .unwrap()
   )
 });
 
@@ -273,12 +283,6 @@ impl GateSubClient {
 
     let (m1, m2) = (market_cl.clone(), market_cl);
 
-    let send_limiter = Ratelimiter::builder(5, Duration::from_secs(1))
-      .max_tokens(5)
-      .initial_available(5)
-      .build()
-      .unwrap();
-
     GateSubClient {
       base: SubClient::new(
         ws_url,
@@ -297,7 +301,7 @@ impl GateSubClient {
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         CONNECT_LIMITER.clone(),
-        send_limiter
+        SEND_LIMITER.clone()
       ),
       init
     }
