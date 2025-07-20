@@ -294,7 +294,7 @@ impl WsClient {
                     }
                   }
                   Ok(ws::Frame::Ping(p)) => {
-                    ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Pong(p)));
+                    ext_tasks.push(send(sink.clone(), None, ws::Message::Pong(p)));
                   }
                   Ok(ws::Frame::Close(e)) => {
                     break format!("Closed socket: {:?}", e);
