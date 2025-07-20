@@ -1,12 +1,9 @@
 use crate::{
-  base::exchange::assets::{Asset, MarketType},
-  exchange::{gate::GateExchange, mexc::MexcExchange},
-  utils::exchange::setup_exchanges,
-  worker::{
+  base::exchange::assets::{Asset, MarketType}, exchange::{gate::GateExchange, mexc::MexcExchange}, utils::exchange::setup_exchanges, worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
-  },
+  }
 };
 use async_channel::unbounded;
 use futures::{StreamExt, TryStreamExt, stream::FuturesUnordered};

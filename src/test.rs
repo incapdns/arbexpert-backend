@@ -1,17 +1,18 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::thread;
 use crate::{
   base::{
-    exchange::{order::OrderBook, sub_client::SharedBook, Exchange},
+    exchange::{Exchange, order::OrderBook, sub_client::SharedBook},
     http::{builder::HttpRequestBuilder, client::ntex::NtexHttpClient},
     ws::client::{WsClient, WsOptions},
   },
-  exchange::{mexc::MexcExchange},
+  exchange::mexc::MexcExchange,
 };
 use compio::buf::bytes::Buf;
 use futures::{FutureExt, StreamExt, stream::FuturesUnordered};
 use ntex::{channel::mpsc, rt};
+use ratelimit::Ratelimiter;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::thread;
 use std::{collections::BTreeMap, error::Error, time::Duration};
 
 pub async fn do_websocket_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,8 +55,7 @@ pub async fn do_websocket_test() -> Result<(), Box<dyn std::error::Error>> {
 
   client.connect().await?;
 
-  let _ = client
-    .send("Hello from Glommio WebSocket client!".into());
+  let _ = client.send("Hello from Glommio WebSocket client!".into());
 
   compio::time::sleep(Duration::from_millis(1)).await;
 
@@ -90,10 +90,13 @@ pub async fn do_http_post_test() -> Result<(), Box<dyn std::error::Error>> {
 
 pub async fn do_orderbook_test(
   exchange: &dyn Exchange,
-) -> (Result<SharedBook, Box<dyn Error>>, Result<SharedBook, Box<dyn Error>>) {
+) -> (
+  Result<SharedBook, Box<dyn Error>>,
+  Result<SharedBook, Box<dyn Error>>,
+) {
   (
     exchange.watch_orderbook("BTC/USDT".to_string()).await,
-    exchange.watch_orderbook("BTC/USDT:USDT".to_string()).await
+    exchange.watch_orderbook("BTC/USDT:USDT".to_string()).await,
   )
 }
 
@@ -172,16 +175,19 @@ pub async fn random_test() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-pub fn do_main_test() -> Option<()>{
+pub fn do_main_test() -> Option<()> {
   let mut map = Arc::new(HashMap::<i32, OrderBook>::new());
 
   let map_mut = Arc::get_mut(&mut map)?;
 
-  map_mut.insert(1,  OrderBook {
-    asks: BTreeMap::new(),
-    bids: BTreeMap::new(),
-    update_id: 100
-  });
+  map_mut.insert(
+    1,
+    OrderBook {
+      asks: BTreeMap::new(),
+      bids: BTreeMap::new(),
+      update_id: 100,
+    },
+  );
 
   let handle = thread::spawn({
     let cloned = map.clone();
@@ -196,4 +202,29 @@ pub fn do_main_test() -> Option<()>{
   handle.join().unwrap();
 
   Some(())
+}
+
+pub async fn test_rate() {
+  let limiter = Arc::new(
+    Ratelimiter::builder(5, Duration::from_secs(1))
+      .max_tokens(5)
+      .initial_available(5)
+      .build()
+      .unwrap(),
+  );
+
+  println!("Starting the Test rate");
+
+  for _ in 0..100 {
+    match limiter.try_wait() {
+      Ok(()) => {
+        println!("Ok");
+        continue;
+      }
+      Err(duration) => {
+        println!("Sleeping: {}ms", duration.as_millis());
+        ntex::time::sleep(duration).await;
+      }
+    }
+  }
 }
