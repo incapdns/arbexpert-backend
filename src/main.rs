@@ -248,7 +248,6 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
     }
   }
 
-  // Agora cruza todos os pares possíveis por símbolo
   for entries in symbol_map.values() {
     let spot_assets: Vec<_> = entries
       .iter()
@@ -297,13 +296,6 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         id
       }
     };
-
-    {
-      let mut arbitrages_mut = state.arbitrages.write().unwrap();
-      for item in items.iter() {
-        arbitrages_mut.push(item.clone());
-      }
-    }
 
     let tx = {
       let channels = state.worker_channels.lock().unwrap();
