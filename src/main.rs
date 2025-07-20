@@ -479,18 +479,6 @@ async fn main() -> std::io::Result<()> {
 
   let worker_global_state = global_state.clone();
 
-  let gate = GateExchange::new().await;
-
-  let mut tasks = FuturesUnordered::new();
-
-  for _ in 0..100 {
-    tasks.push(gate.watch_orderbook("VANRY/USDT:USDT".to_string()));
-  }
-
-  while let Some(res) = tasks.next().await {
-    println!("{}", res.is_ok());
-  }
-
   Server::build()
     .workers(num_cpus::get())
     .on_worker_start(move || on_worker_start(worker_global_state.clone()))

@@ -38,15 +38,16 @@ impl BinanceExchange {
       return client.watch(symbol).await;
     }
 
-    // 3) Caso contrário, cria um novo client
-    let new_sc = BinanceSubClient::new(self.utils.clone(), market);
-    let book = new_sc.watch(symbol).await?;
-
-    // Empurra o novo client para o vetor, _depois_ do await
-    {
+    // Empurra o novo client para o vetor
+    let rc_new_sc = {
       let mut guard = sub_clients.borrow_mut();
-      guard.push(Rc::new(new_sc));
-    }
+      let new_sc = BinanceSubClient::new(self.utils.clone(), market);
+      let rc_new_sc = Rc::new(new_sc);
+      guard.push(rc_new_sc.clone());
+      rc_new_sc
+    };
+
+    let book = rc_new_sc.watch(symbol).await?;
 
     Ok(book)
   }
