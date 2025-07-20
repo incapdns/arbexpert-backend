@@ -204,8 +204,8 @@ impl SubClient {
     loop {
       match self.send_limiter.try_wait() {
         Ok(()) => {
-          let ws_bm = self.ws.borrow_mut();
-          ws_bm.send(json)?;
+          let ws_bm = self.ws.try_borrow_mut();
+          ws_bm?.send(json)?;
           return Ok(());
         }
         Err(duration) => {
