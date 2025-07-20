@@ -27,7 +27,6 @@ type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
 pub struct BinanceSubClient {
   base: SubClient,
-  init: Init,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,7 +232,7 @@ impl BinanceSubClient {
 
     let init = Rc::new(RefCell::new(HashMap::new()));
 
-    let (ic1, ic2) = (init.clone(), init.clone());
+    let (ic1, ic2) = (init.clone(), init);
 
     let send_limiter = Arc::new(
       Ratelimiter::builder(5, Duration::from_millis(2500))
@@ -262,8 +261,7 @@ impl BinanceSubClient {
         Self::unsubscribe,
         CONNECT_LIMITER.clone(),
         send_limiter,
-      ),
-      init,
+      )
     }
   }
 

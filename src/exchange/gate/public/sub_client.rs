@@ -27,8 +27,7 @@ use std::time::UNIX_EPOCH;
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
 pub struct GateSubClient {
-  base: SubClient,
-  init: Init,
+  base: SubClient
 }
 
 #[derive(Debug, Deserialize)]
@@ -262,7 +261,7 @@ impl GateSubClient {
 
     let init = Rc::new(RefCell::new(HashMap::new()));
 
-    let (ic1, ic2) = (init.clone(), init.clone());
+    let (ic1, ic2) = (init.clone(), init);
 
     let market_cl = market.clone();
 
@@ -295,8 +294,7 @@ impl GateSubClient {
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         CONNECT_LIMITER.clone(),
         send_limiter
-      ),
-      init,
+      )
     }
   }
 
