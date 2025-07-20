@@ -12,6 +12,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 pub type SharedBook = Rc<RefCell<OrderBook>>;
 
@@ -29,7 +30,7 @@ pub struct SubClient {
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
-  connect_limiter: &'static Ratelimiter,
+  connect_limiter: Arc<Ratelimiter>,
   send_limiter: Ratelimiter,
 }
 
@@ -48,7 +49,7 @@ impl SubClient {
     on_fail: impl Fn() + 'static,
     subscribe: impl Fn(String) -> SubscribeRet + 'static,
     unsubscribe: impl Fn(String) -> UnsubscribeRet + 'static,
-    connect_limiter: &'static Ratelimiter,
+    connect_limiter: Arc<Ratelimiter>,
     send_limiter: Ratelimiter,
   ) -> Self
   where
@@ -234,7 +235,7 @@ impl SubClient {
           match self.connect_limiter.try_wait() {
             Ok(()) => {
               let current = COUNT.fetch_add(1, Ordering::Relaxed);
-              println!("Current: {current}");
+              println!("Current: PASS {current}");
               let result = ws.connect().await;
               break (result, {
                 let mut connecting_bm = self.connecting.borrow_mut();

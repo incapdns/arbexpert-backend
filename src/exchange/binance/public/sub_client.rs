@@ -18,7 +18,9 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
+use std::ops::Deref;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 use std::usize;
 
@@ -37,12 +39,14 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-pub static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
-  Ratelimiter::builder(1, Duration::from_secs(20))
-    .max_tokens(1)
-    .initial_available(1)
-    .build()
-    .unwrap()
+pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(1, Duration::from_secs(20))
+      .max_tokens(1)
+      .initial_available(1)
+      .build()
+      .unwrap(),
+  )
 });
 
 impl BinanceSubClient {
@@ -255,7 +259,7 @@ impl BinanceSubClient {
         },
         Self::subscribe,
         Self::unsubscribe,
-        &*CONNECT_LIMITER,
+        CONNECT_LIMITER.clone(),
         send_limiter,
       ),
       init,

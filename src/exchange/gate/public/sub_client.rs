@@ -17,8 +17,9 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
-use std::num::NonZero;
+use std::ops::Deref;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -51,12 +52,14 @@ struct FutureDepthSnapshot {
   asks: Vec<FutureDepthSnapshotItem>,
 }
 
-static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
-  Ratelimiter::builder(200, Duration::from_secs(100))
-    .max_tokens(200)
-    .initial_available(200)
-    .build()
-    .unwrap()
+pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(200, Duration::from_secs(100))
+      .max_tokens(1)
+      .initial_available(200)
+      .build()
+      .unwrap(),
+  )
 });
 
 impl GateSubClient {
@@ -293,7 +296,7 @@ impl GateSubClient {
         },
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
-        &*CONNECT_LIMITER,
+        CONNECT_LIMITER.clone(),
         send_limiter
       ),
       init
