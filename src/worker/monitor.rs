@@ -105,6 +105,7 @@ async fn detect_arbitrage<'a>(
       }
     }
   } else {
+    println!("Err in snapshot {:?}", arbitrage);
     *snapshot = ArbitrageSnaphot::default();
   }
 

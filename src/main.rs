@@ -297,6 +297,13 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
       }
     };
 
+    {
+      let mut arbitrages_mut = state.arbitrages.write().unwrap();
+      for item in items.iter() {
+        arbitrages_mut.push(item.clone());
+      }
+    }
+
     let tx = {
       let channels = state.worker_channels.lock().unwrap();
       channels.get(&worker_id).cloned()
