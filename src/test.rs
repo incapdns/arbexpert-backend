@@ -54,7 +54,7 @@ pub async fn do_websocket_test() -> Result<(), Box<dyn std::error::Error>> {
 
   client.connect().await?;
 
-  client
+  let _ = client
     .send("Hello from Glommio WebSocket client!".into());
 
   compio::time::sleep(Duration::from_millis(1)).await;
