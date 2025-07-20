@@ -1,8 +1,8 @@
-use crate::utils::get_price;
-use crate::{Arbitrage, ArbitrageSnaphot};
 use crate::base::exchange::Exchange;
+use crate::utils::exchange::get_price;
 use crate::worker::commands::StartMonitor;
 use crate::worker::state::GlobalState;
+use crate::{Arbitrage, ArbitrageSnaphot};
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rust_decimal::dec;
@@ -16,7 +16,7 @@ pub struct Reenter<'a> {
   pub arbitrage: Arc<Arbitrage>,
 }
 
-async fn spawn_live_calc<'a>(
+async fn detect_arbitrage<'a>(
   spot: &'a dyn Exchange,
   future: &'a dyn Exchange,
   symbol: String,
@@ -93,9 +93,7 @@ async fn spawn_live_calc<'a>(
 
     let max = dec!(50);
 
-    let valid = 
-      snapshot.entry_percent.abs() < max &&
-      snapshot.exit_percent.abs() < max;
+    let valid = snapshot.entry_percent.abs() < max && snapshot.exit_percent.abs() < max;
 
     need_notification = need_notification && valid;
 
@@ -127,10 +125,7 @@ pub async fn start_monitor(
 
   for item in sm.items.iter() {
     let spot_symbol = format!("{}/{}", item.spot.base, item.spot.quote);
-    let future_symbol = format!(
-      "{}/{}:{}",
-      item.future.base, item.future.quote, item.future.quote
-    );
+    let future_symbol = format!("{}/{}:USDT", item.future.base, item.future.quote);
 
     let spot = exchanges
       .iter()
@@ -147,7 +142,7 @@ pub async fn start_monitor(
     let symbols = vec![spot_symbol, future_symbol];
 
     for symbol in symbols {
-      tasks.push(spawn_live_calc(
+      tasks.push(detect_arbitrage(
         spot,
         future,
         symbol, //
@@ -158,11 +153,11 @@ pub async fn start_monitor(
   }
 
   while let Some(reenter) = tasks.next().await {
-    tasks.push(spawn_live_calc(
+    tasks.push(detect_arbitrage(
       reenter.spot,
       reenter.future,
       reenter.symbol,
-      reenter.arbitrage.clone(),
+      reenter.arbitrage,
       state.clone(),
     ));
   }

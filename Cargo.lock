@@ -135,9 +135,9 @@ dependencies = [
  "env_logger",
  "futures",
  "futures-io",
- "futures-util",
  "hex",
  "hmac",
+ "macros",
  "mimalloc",
  "ntex",
  "ntex-cors",
@@ -146,6 +146,7 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
+ "quote",
  "ratelimit",
  "rust_decimal",
  "rustls 0.23.29",
@@ -156,6 +157,7 @@ dependencies = [
  "socket2 0.6.0",
  "spin 0.10.0",
  "thiserror 2.0.12",
+ "tokio-macros",
  "url",
  "webpki-roots 1.0.1",
 ]
@@ -1637,6 +1639,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "macros"
+version = "2.5.0"
+
+[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3087,9 +3093,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.46.0"
+version = "1.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1140bb80481756a8cbe10541f37433b459c5aa1e727b4c020fbfebdc25bf3ec4"
+checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
 dependencies = [
  "backtrace",
  "io-uring",
@@ -3097,6 +3103,15 @@ dependencies = [
  "mio",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.5.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
 ]
 
 [[package]]

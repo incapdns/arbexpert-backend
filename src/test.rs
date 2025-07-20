@@ -7,12 +7,12 @@ use crate::{
     http::{builder::HttpRequestBuilder, client::ntex::NtexHttpClient},
     ws::client::{WsClient, WsOptions},
   },
-  exchange::{binance::BinanceExchange, mexc::MexcExchange},
+  exchange::{mexc::MexcExchange},
 };
 use compio::buf::bytes::Buf;
-use futures::{FutureExt, StreamExt, future::pending, select, stream::FuturesUnordered};
+use futures::{FutureExt, StreamExt, stream::FuturesUnordered};
 use ntex::{channel::mpsc, rt};
-use std::{collections::BTreeMap, error::Error, rc::Rc, time::Duration};
+use std::{collections::BTreeMap, error::Error, time::Duration};
 
 pub async fn do_websocket_test() -> Result<(), Box<dyn std::error::Error>> {
   let url = "wss://echo.websocket.events".to_string();
@@ -144,17 +144,9 @@ pub async fn random_test() -> Result<(), Box<dyn Error>> {
   rt::spawn(async move {
     let mut tasks = FuturesUnordered::new();
 
-    async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
-      if tasks.len() > 0 {
-        tasks.next().await
-      } else {
-        pending().await
-      }
-    }
-
     loop {
-      select! {
-        opt = rx.recv().fuse() => {
+      macros::select! {
+        opt = rx.recv() => {
           println!("Chegou {}", opt.is_some());
           if let Some(future) = opt {
             tasks.push(future);
@@ -162,7 +154,7 @@ pub async fn random_test() -> Result<(), Box<dyn Error>> {
             break;
           }
         },
-        res = next_task(&mut tasks).fuse() => {
+        res = tasks.next(), if tasks.len() > 0  => {
           println!("{}, {:?}", tasks.len(), res);
         },
       };

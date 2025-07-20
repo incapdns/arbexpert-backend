@@ -1,7 +1,7 @@
 use crate::{
   base::exchange::assets::{Asset, MarketType},
   exchange::{gate::GateExchange, mexc::MexcExchange},
-  utils::setup_exchanges,
+  utils::exchange::setup_exchanges,
   worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
@@ -9,9 +9,7 @@ use crate::{
   },
 };
 use async_channel::unbounded;
-use futures::{
-  FutureExt, StreamExt, TryStreamExt, future::pending, select, stream::FuturesUnordered,
-};
+use futures::{StreamExt, TryStreamExt, stream::FuturesUnordered};
 use mimalloc::MiMalloc;
 use ntex::{
   Service,
@@ -377,32 +375,24 @@ async fn ws_service(
 
   let (close_tx, close_rx) = oneshot::channel();
 
-  async fn next_task<F: Future>(tasks: &mut FuturesUnordered<F>) -> Option<F::Output> {
-    if tasks.len() > 0 {
-      tasks.next().await
-    } else {
-      pending().await
-    }
-  }
-
   ntex::rt::spawn(async move {
     let mut tasks = FuturesUnordered::new();
 
     loop {
-      select! {
-        req = rx.recv().fuse() => {
+      macros::select! {
+        req = rx.recv() => {
           let Ok(msg) = req else { return };
 
           tasks.push(sink_clone.send(web::ws::Message::Text(msg.into())));
         },
-        task = next_task(&mut tasks).fuse() => {
+        task = tasks.next(), if tasks.len() > 0 => {
           let Some(res) = task else { return };
 
           if let Err(_) = res {
             return
           }
         },
-        _ = close_rx.recv().fuse()  => {
+        _ = close_rx.recv()  => {
           return
         }
       };
@@ -491,6 +481,18 @@ async fn main() -> std::io::Result<()> {
   });
 
   let worker_global_state = global_state.clone();
+
+  let gate = GateExchange::new().await;
+
+  let mut tasks = FuturesUnordered::new();
+
+  for _ in 0..100 {
+    tasks.push(gate.watch_orderbook("VANRY/USDT:USDT".to_string()));
+  }
+
+  while let Some(res) = tasks.next().await {
+    println!("{}", res.is_ok());
+  }
 
   Server::build()
     .workers(num_cpus::get())
