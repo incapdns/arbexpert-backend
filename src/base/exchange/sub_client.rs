@@ -26,8 +26,7 @@ pub struct SubClient {
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
-  connect_limiter: Arc<Ratelimiter>,
-  send_limiter: Arc<Ratelimiter>,
+  connect_limiter: Arc<Ratelimiter>
 }
 
 #[derive(Clone)]
@@ -74,8 +73,6 @@ impl SubClient {
 
     let (s1, s2, s3, s4) = (shared.clone(), shared.clone(), shared.clone(), shared);
 
-    let url = ws_url.clone();
-
     let ws = WsClient::new(
       ws_url,
       // on_message
@@ -104,7 +101,7 @@ impl SubClient {
 
         async move { on_binary_cl(binary, s4).await }
       },
-      WsOptions::with_limit(send_limiter.clone()),
+      WsOptions::with_limit(send_limiter),
     );
 
     let subscribe_pin: Box<dyn Fn(String) -> DynString> =
@@ -120,8 +117,7 @@ impl SubClient {
       subscribe: subscribe_pin,
       unsubscribe: unsubscribe_pin,
       connecting,
-      connect_limiter,
-      send_limiter,
+      connect_limiter
     }
   }
 
@@ -204,18 +200,9 @@ impl SubClient {
   }
 
   async fn send(&self, json: String) -> Result<(), Box<dyn Error>> {
-    loop {
-      match self.send_limiter.try_wait() {
-        Ok(()) => {
-          let ws_bm = self.ws.try_borrow_mut();
-          ws_bm?.send(json)?;
-          return Ok(());
-        }
-        Err(duration) => {
-          ntex::time::sleep(duration).await;
-        }
-      }
-    }
+    let ws_bm = self.ws.try_borrow_mut();
+    ws_bm?.send(json)?;
+    return Ok(());
   }
 
   async fn connect(&self) -> Result<(), Box<dyn Error>> {
