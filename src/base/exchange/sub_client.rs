@@ -101,7 +101,7 @@ impl SubClient {
 
         async move { on_binary_cl(binary, s4).await }
       },
-      WsOptions::with_limit(send_limiter),
+      WsOptions::with_limiter(send_limiter),
     );
 
     let subscribe_pin: Box<dyn Fn(String) -> DynString> =

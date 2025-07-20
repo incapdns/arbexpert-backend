@@ -28,7 +28,7 @@ pub struct WsOptions {
 }
 
 impl WsOptions {
-  pub fn with_limit(send_limit: Arc<Ratelimiter>) -> Self {
+  pub fn with_limiter(send_limit: Arc<Ratelimiter>) -> Self {
     Self {
       send_limit: Some(send_limit),
       ..Self::default()
