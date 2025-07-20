@@ -285,9 +285,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
     }
   }
 
-  let test = arbitrages.into_iter().filter(|a| a.0.eq("AVA/USDT"));
-
-  for (key, items) in test {
+  for (key, items) in arbitrages {
     let worker_id = {
       let mut map = state.symbol_map.lock().unwrap();
       if let Some(&id) = map.get(&key) {
