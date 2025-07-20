@@ -21,6 +21,9 @@ use crate::{
 static TIME_OFFSET_MS: LazyLock<Mutex<i64>> = LazyLock::new(|| Mutex::new(i64::MAX));
 static ASSETS: LazyLock<Mutex<Assets>> = LazyLock::new(|| Mutex::new(Assets::new()));
 
+static LOAD_ASSETS: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static SYNC_TIME: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 impl GateExchange {
   pub async fn new() -> Self {
     let mut result = Self {
@@ -156,6 +159,7 @@ impl GateExchange {
   }
 
   pub async fn load_assets(&mut self) -> Result<Assets, ExchangeError> {
+    let _lock = LOAD_ASSETS.lock();
     {
       let lock = ASSETS.lock().unwrap();
       if lock.spot.len() > 0 {
@@ -172,6 +176,7 @@ impl GateExchange {
   }
 
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {
+    let _lock = SYNC_TIME.lock();
     let mut lock = TIME_OFFSET_MS.lock().unwrap();
     if *lock != i64::MAX {
       self.public.time_offset_ms = *lock;

@@ -10,8 +10,6 @@ use std::mem;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub type SharedBook = Rc<RefCell<OrderBook>>;
@@ -20,8 +18,6 @@ pub type Pending = Rc<RefCell<HashMap<String, Vec<oneshot::Sender<SharedBook>>>>
 pub type Subscribed = Rc<RefCell<HashMap<String, SharedBook>>>;
 
 type DynString = Pin<Box<dyn Future<Output = Result<String, Box<dyn Error>>>>>;
-
-static COUNT: AtomicU32 = AtomicU32::new(0);
 
 pub struct SubClient {
   ws: RefCell<WsClient>,
@@ -78,6 +74,8 @@ impl SubClient {
 
     let (s1, s2, s3, s4) = (shared.clone(), shared.clone(), shared.clone(), shared);
 
+    let url = ws_url.clone();
+
     let ws = WsClient::new(
       ws_url,
       // on_message
@@ -99,14 +97,14 @@ impl SubClient {
         fail2();
       },
       // on_connected
-      || {},
+      move || {},
       move |binary| {
         let on_binary_cl = on_binary_rc.clone();
         let s4 = s4.clone();
 
         async move { on_binary_cl(binary, s4).await }
       },
-      WsOptions::default(),
+      WsOptions::with_limit(send_limiter.clone()),
     );
 
     let subscribe_pin: Box<dyn Fn(String) -> DynString> =
@@ -234,8 +232,6 @@ impl SubClient {
         let (result, senders) = loop {
           match self.connect_limiter.try_wait() {
             Ok(()) => {
-              let current = COUNT.fetch_add(1, Ordering::Relaxed);
-              println!("Current: PASS {current}");
               let result = ws.connect().await;
               break (result, {
                 let mut connecting_bm = self.connecting.borrow_mut();

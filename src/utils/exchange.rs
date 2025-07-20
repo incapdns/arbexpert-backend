@@ -17,6 +17,6 @@ pub fn get_price<'a, K, V>(side: &'a BTreeMap<K, V>, default: &'a K) -> &'a K {
   side
     .iter()
     .next()
-    .map(|(p, _)| p.clone())
+    .map(|(p, _)| p)
     .unwrap_or(default)
 }

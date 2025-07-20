@@ -1,27 +1,39 @@
 use atomic::Atomic;
 use bytemuck::{Pod, Zeroable};
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use ntex::channel::{mpsc, oneshot};
 use ntex::tls::rustls::TlsConnector;
 use ntex::util::{ByteString, Bytes};
+use ntex::ws::WsSink;
 use ntex::{channel::mpsc::Sender, rt, time, ws};
+use ratelimit::Ratelimiter;
 use rustls::RootCertStore;
 use std::cell::RefCell;
 use std::mem;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::{error::Error, time::Duration};
 use url::Url;
 
-#[derive(Clone)]
 pub struct WsOptions {
   pub verbose: bool,
   pub ping_interval: Duration,
   pub backoff_base: Duration,
   pub max_backoff: Duration,
+  pub send_limit: Option<Arc<Ratelimiter>>,
+}
+
+impl WsOptions {
+  pub fn with_limit(send_limit: Arc<Ratelimiter>) -> Self {
+    Self {
+      send_limit: Some(send_limit),
+      ..Self::default()
+    }
+  }
 }
 
 impl Default for WsOptions {
@@ -31,6 +43,7 @@ impl Default for WsOptions {
       ping_interval: Duration::from_secs(30),
       backoff_base: Duration::from_millis(500),
       max_backoff: Duration::from_secs(30),
+      send_limit: None,
     }
   }
 }
@@ -221,9 +234,31 @@ impl WsClient {
       let on_message = self.on_message.clone();
       let on_close = self.on_close.clone();
 
+      let limiter = self.options.send_limit.clone();
+
       async move {
         let seal = ws_client.seal();
         let sink = seal.sink();
+
+        async fn send(
+          sink: WsSink,
+          limiter: Option<Arc<Ratelimiter>>,
+          message: ws::Message,
+        ) -> Result<(), ws::error::ProtocolError> {
+          if let Some(send_limiter) = limiter {
+            loop {
+              match send_limiter.try_wait() {
+                Ok(()) => {
+                  return sink.send(message).await;
+                }
+                Err(duration) => {
+                  ntex::time::sleep(duration).await;
+                }
+              }
+            }
+          }
+          sink.send(message).await
+        }
 
         // Our struct client tasks
         let mut client_tasks = FuturesUnordered::new();
@@ -242,7 +277,7 @@ impl WsClient {
                 break format!("Internal error in ping");
               }
 
-              ext_tasks.push(sink.send(ws::Message::Ping(Bytes::new())));
+              ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Ping(Bytes::new())));
             },
             message = rx_ws.next() => match message {
               Some(result) => {
@@ -259,7 +294,7 @@ impl WsClient {
                     }
                   }
                   Ok(ws::Frame::Ping(p)) => {
-                    ext_tasks.push(sink.send(ws::Message::Pong(p)));
+                    ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Pong(p)));
                   }
                   Ok(ws::Frame::Close(e)) => {
                     break format!("Closed socket: {:?}", e);
@@ -279,7 +314,7 @@ impl WsClient {
             },
             maybe_cmd = rx.recv() => match maybe_cmd {
               Some(cmd) => {
-                ext_tasks.push(sink.send(cmd));
+                ext_tasks.push(send(sink.clone(), limiter.clone(), cmd));
               }
               None => {
                 break "Closed channel [maybe_cmd]".to_string();

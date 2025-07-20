@@ -17,7 +17,6 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;

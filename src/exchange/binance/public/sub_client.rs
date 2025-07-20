@@ -18,7 +18,6 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,9 +40,9 @@ struct DepthSnapshot {
 
 pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(1, Duration::from_secs(20))
-      .max_tokens(1)
-      .initial_available(1)
+    Ratelimiter::builder(300, Duration::from_secs(300))
+      .max_tokens(300)
+      .initial_available(300)
       .build()
       .unwrap()
   )
