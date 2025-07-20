@@ -37,10 +37,10 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
-  Ratelimiter::builder(300, Duration::from_secs(100))
-    .max_tokens(300)
-    .initial_available(300)
+pub static CONNECT_LIMITER: Lazy<Ratelimiter> = Lazy::new(|| {
+  Ratelimiter::builder(1, Duration::from_secs(20))
+    .max_tokens(1)
+    .initial_available(1)
     .build()
     .unwrap()
 });

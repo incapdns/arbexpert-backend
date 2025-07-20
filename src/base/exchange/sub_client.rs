@@ -10,6 +10,8 @@ use std::mem;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 
 pub type SharedBook = Rc<RefCell<OrderBook>>;
 
@@ -17,6 +19,8 @@ pub type Pending = Rc<RefCell<HashMap<String, Vec<oneshot::Sender<SharedBook>>>>
 pub type Subscribed = Rc<RefCell<HashMap<String, SharedBook>>>;
 
 type DynString = Pin<Box<dyn Future<Output = Result<String, Box<dyn Error>>>>>;
+
+static COUNT: AtomicU32 = AtomicU32::new(0);
 
 pub struct SubClient {
   ws: RefCell<WsClient>,
@@ -215,7 +219,7 @@ impl SubClient {
     }
   }
 
-  pub async fn connect(&self) -> Result<(), Box<dyn Error>> {
+  async fn connect(&self) -> Result<(), Box<dyn Error>> {
     let mut connecting = None;
 
     {
@@ -229,6 +233,8 @@ impl SubClient {
         let (result, senders) = loop {
           match self.connect_limiter.try_wait() {
             Ok(()) => {
+              let current = COUNT.fetch_add(1, Ordering::Relaxed);
+              println!("Current: {current}");
               let result = ws.connect().await;
               break (result, {
                 let mut connecting_bm = self.connecting.borrow_mut();
