@@ -269,9 +269,9 @@ impl GateSubClient {
     let (m1, m2) = (market_cl.clone(), market_cl);
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(4, Duration::from_secs(1))
-        .max_tokens(4)
-        .initial_available(4)
+      Ratelimiter::builder(5, Duration::from_secs(1))
+        .max_tokens(5)
+        .initial_available(5)
         .build()
         .unwrap(),
     );
