@@ -50,9 +50,9 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static SEND_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(5, Duration::from_secs(1))
-      .max_tokens(5)
-      .initial_available(5)
+    Ratelimiter::builder(4, Duration::from_secs(1))
+      .max_tokens(4)
+      .initial_available(4)
       .build()
       .unwrap()
   )
