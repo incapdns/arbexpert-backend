@@ -40,7 +40,7 @@ struct DepthSnapshot {
 
 pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(300, Duration::from_secs(300))
+    Ratelimiter::builder(300, Duration::from_secs(301))
       .max_tokens(300)
       .initial_available(300)
       .build()
@@ -236,7 +236,7 @@ impl BinanceSubClient {
     let (ic1, ic2) = (init.clone(), init.clone());
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(5, Duration::from_secs(1))
+      Ratelimiter::builder(5, Duration::from_secs(2))
         .max_tokens(5)
         .initial_available(5)
         .build()
