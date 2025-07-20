@@ -1,7 +1,7 @@
 pub use std::future::poll_fn;
 
 #[doc(hidden)]
-pub fn thread_rng_n(n: u32) -> u32 {
+pub fn thread_rng_n(_: u32) -> u32 {
   0
 }
 
