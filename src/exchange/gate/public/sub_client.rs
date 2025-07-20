@@ -7,6 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
+use once_cell::sync::Lazy;
 use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -22,7 +23,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use once_cell::sync::Lazy;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
@@ -58,16 +58,6 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
       .initial_available(170)
       .build()
       .unwrap(),
-  )
-});
-
-pub static SEND_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(4, Duration::from_secs(1))
-      .max_tokens(4)
-      .initial_available(4)
-      .build()
-      .unwrap()
   )
 });
 
@@ -217,12 +207,10 @@ impl GateSubClient {
 
         let mut pending = mem::take(init.borrow_mut().get_mut(symbol)?);
 
-        let idx = pending
-          .iter()
-          .position(|item| {
-            item.first_update_id <= snapshot.update_id + 1 &&
-            item.last_update_id  >= snapshot.update_id + 1
-          });
+        let idx = pending.iter().position(|item| {
+          item.first_update_id <= snapshot.update_id + 1
+            && item.last_update_id >= snapshot.update_id + 1
+        });
 
         if idx.is_none() {
           ntex::time::sleep(Duration::from_millis(100)).await;
@@ -247,9 +235,7 @@ impl GateSubClient {
       {
         let mut book_mut = book.borrow_mut();
 
-        if first_update_id > book_mut.update_id + 1 || 
-           last_update_id < book_mut.update_id + 1 
-        {
+        if first_update_id > book_mut.update_id + 1 || last_update_id < book_mut.update_id + 1 {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
@@ -282,6 +268,14 @@ impl GateSubClient {
 
     let (m1, m2) = (market_cl.clone(), market_cl);
 
+    let send_limiter = Arc::new(
+      Ratelimiter::builder(4, Duration::from_secs(1))
+        .max_tokens(4)
+        .initial_available(4)
+        .build()
+        .unwrap(),
+    );
+
     GateSubClient {
       base: SubClient::new(
         ws_url,
@@ -300,9 +294,9 @@ impl GateSubClient {
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         CONNECT_LIMITER.clone(),
-        SEND_LIMITER.clone()
+        send_limiter
       ),
-      init
+      init,
     }
   }
 
