@@ -206,7 +206,7 @@ impl SubClient {
         Ok(()) => {
           let ws_bm = self.ws.borrow_mut();
           ws_bm.send(json)?;
-          return Ok(())
+          return Ok(());
         }
         Err(duration) => {
           ntex::time::sleep(duration).await;
@@ -216,43 +216,48 @@ impl SubClient {
   }
 
   pub async fn connect(&self) -> Result<(), Box<dyn Error>> {
-    let ws_bm = self.ws.try_borrow_mut();
+    let mut connecting = None;
 
-    if let Ok(mut ws) = ws_bm {
-      if ws.is_connected() {
-        return Ok(());
-      }
+    {
+      let ws_bm = self.ws.try_borrow_mut();
 
-      let (result, mut connecting) = loop {
-        match self.connect_limiter.try_wait() {
-          Ok(()) => {
-            let result = ws.connect().await;
-            break (result, {
-              let mut connecting_bm = self.connecting.borrow_mut();
-              mem::take(connecting_bm.deref_mut())
-            });
-          }
-          Err(duration) => {
-            ntex::time::sleep(duration).await;
-          }
+      if let Ok(mut ws) = ws_bm {
+        if ws.is_connected() {
+          return Ok(());
         }
-      };
 
-      if result.is_err() {
-        connecting.clear();
-        return Err(result.err().unwrap());
+        let (result, senders) = loop {
+          match self.connect_limiter.try_wait() {
+            Ok(()) => {
+              let result = ws.connect().await;
+              break (result, {
+                let mut connecting_bm = self.connecting.borrow_mut();
+                mem::take(connecting_bm.deref_mut())
+              });
+            }
+            Err(duration) => {
+              ntex::time::sleep(duration).await;
+            }
+          }
+        };
+
+        if result.is_ok() {
+          connecting = Some(senders);
+        }
       } else {
-        for connecting in connecting {
-          let _ = connecting.send(Ok(()));
+        let (tx, rx) = oneshot::channel();
+        {
+          let mut connecting_bm = self.connecting.borrow_mut();
+          connecting_bm.push(tx);
         }
+        let _ = rx.await?;
       }
-    } else {
-      let (tx, rx) = oneshot::channel();
-      {
-        let mut connecting_bm = self.connecting.borrow_mut();
-        connecting_bm.push(tx);
+    }
+
+    if let Some(senders) = connecting {
+      for sender in senders {
+        let _ = sender.send(Ok(()));
       }
-      let _ = rx.await?;
     }
 
     Ok(())
