@@ -15,7 +15,7 @@ impl BinanceExchange {
     } else {
       "spot"
     };
-    let formatted = before(symbol, ':').replace('/', "_");
+    let formatted = before(symbol, ':').replace('/', "");
     format!("{}@{}", formatted, market_type)
   }
 }

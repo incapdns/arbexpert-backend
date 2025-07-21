@@ -442,7 +442,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:2000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
@@ -466,7 +466,7 @@ async fn main() -> std::io::Result<()> {
   });
 
   ws_tx.set_overflow(true);
-
+  
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
