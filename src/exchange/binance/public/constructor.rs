@@ -1,16 +1,25 @@
 use std::{
-  cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc, sync::{LazyLock, Mutex}, time::{SystemTime, UNIX_EPOCH}
+  cell::RefCell,
+  collections::HashMap,
+  ops::DerefMut,
+  rc::Rc,
+  sync::{LazyLock, Mutex},
+  time::{SystemTime, UNIX_EPOCH},
 };
 
 use futures::join;
 
 use crate::{
   base::{
-    exchange::assets::{Asset, Assets, MarketType},
-    exchange::error::ExchangeError,
+    exchange::{
+      assets::{Asset, Assets, MarketType},
+      error::ExchangeError,
+    },
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
-  exchange::binance::{BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils},
+  exchange::binance::{
+    BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils, public::sub_client::HTTP_LIMITER,
+  },
   from_headers,
 };
 
@@ -45,33 +54,45 @@ impl BinanceExchange {
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
+    let weight;
     let url = if let MarketType::Spot = market {
+      weight = 20;
       "https://api.binance.com/api/v3/exchangeInfo"
     } else {
+      weight = 1;
       "https://fapi.binance.com/fapi/v1/exchangeInfo"
     };
 
-    let resp = self
-      .utils
-      .http_client
-      .request(
-        "GET".to_string(),
-        url.to_string(),
-        from_headers!(headers),
-        None,
-      )
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
-      .body()
-      .limit(100 * 1024 * 1024)
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
+    let response = loop {
+      match HTTP_LIMITER.try_wait_n(weight) {
+        Ok(()) => {
+          break self
+            .utils
+            .http_client
+            .request(
+              "GET".to_string(),
+              url.to_string(),
+              from_headers!(headers),
+              None,
+            )
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
+            .body()
+            .limit(100 * 1024 * 1024)
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
+        }
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    };
 
-    let resp_str = std::str::from_utf8(&resp)
+    let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Resposta inválida: {:?}", e)))?;
 
     let json: serde_json::Value =
-      serde_json::from_str(resp_str).map_err(ExchangeError::JsonError)?;
+      serde_json::from_str(response).map_err(ExchangeError::JsonError)?;
 
     let mut assets = Vec::new();
 
@@ -163,28 +184,38 @@ impl BinanceExchange {
       return Ok(());
     }
 
-    let url = "https://api.Binance.com/api/v3/time";
+    let url = "https://api.binance.com/api/v3/time";
     let headers: HashMap<String, String> = HashMap::new();
 
-    let resp = self
-      .utils
-      .http_client
-      .request(
-        "GET".to_string(),
-        url.to_string(),
-        from_headers!(headers),
-        None,
-      ) // ajuste conforme seu client
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
-      .body()
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+    let response = loop {
+      match HTTP_LIMITER.try_wait() {
+        Ok(()) => {
+          break self
+            .utils
+            .http_client
+            .request(
+              "GET".to_string(),
+              url.to_string(),
+              from_headers!(headers),
+              None,
+            ) // ajuste conforme seu client
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+            .body()
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+        }
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    };
 
-    let resp = std::str::from_utf8(&resp)
+    let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
 
-    let json: serde_json::Value = serde_json::from_str(&resp).map_err(ExchangeError::JsonError)?;
+    let json: serde_json::Value =
+      serde_json::from_str(&response).map_err(ExchangeError::JsonError)?;
 
     if let Some(server_time) = json.get("serverTime").and_then(|v| v.as_i64()) {
       let local_time = SystemTime::now()
