@@ -38,7 +38,7 @@ async-trait = "0.1.88"
 ntex-cors = "2.1.0"
 atomic = { version = "0.6.1", features = ["std"] }
 bytemuck = { version = "1.21.1", features = ["derive"] }
-ratelimit = "0.10.0"
+ratelimit = { version = "0.10.0", path = "dependencies/ratelimit" }
 quote = "1.0.40"
 tokio-macros = { version = "~2.5.0", path = "dependencies/tokio-macros" }
 macros = { version = "~2.5.0", path = "dependencies/macros" }
