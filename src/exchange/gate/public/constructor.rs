@@ -10,11 +10,15 @@ use futures::join;
 
 use crate::{
   base::{
-    exchange::assets::{Asset, Assets, MarketType},
-    exchange::error::ExchangeError,
+    exchange::{
+      assets::{Asset, Assets, MarketType},
+      error::ExchangeError,
+    },
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
-  exchange::gate::{GateExchange, GateExchangePublic, GateExchangeUtils},
+  exchange::gate::{
+    GateExchange, GateExchangePublic, GateExchangeUtils, public::sub_client::HTTP_LIMITER,
+  },
   from_headers,
 };
 
@@ -55,27 +59,36 @@ impl GateExchange {
       "https://fx-api.gateio.ws/api/v4/futures/usdt/contracts"
     };
 
-    let resp = self
-      .utils
-      .http_client
-      .request(
-        "GET".to_string(),
-        url.to_string(),
-        from_headers!(headers),
-        None,
-      )
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
-      .body()
-      .limit(100 * 1024 * 1024)
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
+    let response = loop {
+      match HTTP_LIMITER.try_wait() {
+        Ok(()) => {
+          break self
+            .utils
+            .http_client
+            .request(
+              "GET".to_string(),
+              url.to_string(),
+              from_headers!(headers),
+              None,
+            )
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
+            .body()
+            .limit(100 * 1024 * 1024)
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
+        }
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    };
 
-    let resp_str = std::str::from_utf8(&resp)
+    let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Resposta inválida: {:?}", e)))?;
 
     let json: serde_json::Value =
-      serde_json::from_str(resp_str).map_err(ExchangeError::JsonError)?;
+      serde_json::from_str(response).map_err(ExchangeError::JsonError)?;
 
     let mut assets = Vec::new();
 
@@ -86,7 +99,7 @@ impl GateExchange {
             continue;
           }
         } else {
-           if symbol.get("trade_status").and_then(|v| v.as_str()) != Some("tradable") {
+          if symbol.get("trade_status").and_then(|v| v.as_str()) != Some("tradable") {
             continue;
           }
         }
@@ -182,30 +195,40 @@ impl GateExchange {
       return Ok(());
     }
 
-    let url = "https://api.Gate.com/api/v3/time";
+    let url = "https://api.gateio.ws/api/v4/spot/time";
     let headers: HashMap<String, String> = HashMap::new();
 
-    let resp = self
-      .utils
-      .http_client
-      .request(
-        "GET".to_string(),
-        url.to_string(),
-        from_headers!(headers),
-        None,
-      ) // ajuste conforme seu client
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
-      .body()
-      .await
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+    let response = loop {
+      match HTTP_LIMITER.try_wait() {
+        Ok(()) => {
+          break self
+            .utils
+            .http_client
+            .request(
+              "GET".to_string(),
+              url.to_string(),
+              from_headers!(headers),
+              None,
+            ) // ajuste conforme seu client
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+            .body()
+            .await
+            .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+        }
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    };
 
-    let resp = std::str::from_utf8(&resp)
+    let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
 
-    let json: serde_json::Value = serde_json::from_str(&resp).map_err(ExchangeError::JsonError)?;
+    let json: serde_json::Value =
+      serde_json::from_str(&response).map_err(ExchangeError::JsonError)?;
 
-    if let Some(server_time) = json.get("serverTime").and_then(|v| v.as_i64()) {
+    if let Some(server_time) = json.get("server_time").and_then(|v| v.as_i64()) {
       let local_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
