@@ -5,8 +5,8 @@ use crate::base::exchange::sub_client::Shared;
 use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
-use crate::exchange::gate::utils::before;
 use crate::exchange::gate::GateExchangeUtils;
+use crate::exchange::gate::utils::before;
 use crate::from_headers;
 use once_cell::sync::Lazy;
 use ratelimit::Ratelimiter;
@@ -28,7 +28,7 @@ use std::time::UNIX_EPOCH;
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 
 pub struct GateSubClient {
-  base: SubClient
+  base: SubClient,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +61,16 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
+pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(200, Duration::from_millis(11050))
+      .max_tokens(200)
+      .initial_available(200)
+      .build()
+      .unwrap(),
+  )
+});
+
 impl GateSubClient {
   async fn process_gate_depth(
     symbol: &str,
@@ -70,7 +80,13 @@ impl GateSubClient {
   ) -> Result<OrderBook, Box<dyn std::error::Error>> {
     let mut processed = OrderBook::default();
 
+    let mut retries = 0;
+
     while processed.update_id < initial_event_u {
+      if retries == 5 {
+        return Err("Max retry".into());
+      }
+
       let uri = match market {
         MarketType::Spot => {
           format!(
@@ -87,13 +103,23 @@ impl GateSubClient {
       };
 
       let headers = from_headers!([("Accept", "application/json")]);
-      let response = utils
-        .http_client
-        .request("GET".into(), uri, headers, None)
-        .await?
-        .body()
-        .limit(10 * 1024 * 1024)
-        .await?;
+
+      let response = loop {
+        match HTTP_LIMITER.try_wait() {
+          Ok(()) => {
+            break utils
+              .http_client
+              .request("GET".into(), uri, headers, None)
+              .await?
+              .body()
+              .limit(10 * 1024 * 1024)
+              .await?;
+          }
+          Err(duration) => {
+            ntex::time::sleep(duration).await;
+          }
+        }
+      };
 
       if let MarketType::Future = market {
         let result = serde_json::from_slice::<FutureDepthSnapshot>(&response)?;
@@ -124,6 +150,8 @@ impl GateSubClient {
           update_id: result.id,
         };
       }
+
+      retries += 1;
     }
 
     Ok(processed)
@@ -200,9 +228,14 @@ impl GateSubClient {
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
       let snapshot =
-        Self::process_gate_depth(symbol, utils.clone(), first_update_id, market.clone())
-          .await
-          .ok()?;
+        Self::process_gate_depth(symbol, utils.clone(), first_update_id, market.clone()).await;
+
+      if snapshot.is_err() {
+        book.borrow_mut().update_id = 0;
+        return None;
+      }
+
+      let snapshot = snapshot.ok()?;
 
       let mut retries = 0;
       let processed = loop {
@@ -275,7 +308,7 @@ impl GateSubClient {
     let (m1, m2) = (market_cl.clone(), market_cl);
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(5, Duration::from_millis(2500))
+      Ratelimiter::builder(5, Duration::from_millis(2050))
         .max_tokens(5)
         .initial_available(5)
         .build()
@@ -300,8 +333,8 @@ impl GateSubClient {
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         CONNECT_LIMITER.clone(),
-        send_limiter
-      )
+        send_limiter,
+      ),
     }
   }
 

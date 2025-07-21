@@ -5,8 +5,8 @@ use crate::base::exchange::sub_client::Shared;
 use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
-use crate::exchange::binance::utils::before;
 use crate::exchange::binance::BinanceExchangeUtils;
+use crate::exchange::binance::utils::before;
 use crate::from_headers;
 use once_cell::sync::Lazy;
 use ratelimit::Ratelimiter;
@@ -48,6 +48,16 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
+pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(200, Duration::from_millis(11050))
+      .max_tokens(200)
+      .initial_available(200)
+      .build()
+      .unwrap(),
+  )
+});
+
 impl BinanceSubClient {
   async fn process_binance_depth(
     symbol: &str,
@@ -72,13 +82,23 @@ impl BinanceSubClient {
       };
 
       let headers = from_headers!([("Accept", "application/json")]);
-      let response = utils
-        .http_client
-        .request("GET".into(), uri, headers, None)
-        .await?
-        .body()
-        .limit(10 * 1024 * 1024)
-        .await?;
+
+      let response = loop {
+        match HTTP_LIMITER.try_wait() {
+          Ok(()) => {
+            break utils
+              .http_client
+              .request("GET".into(), uri, headers, None)
+              .await?
+              .body()
+              .limit(10 * 1024 * 1024)
+              .await?;
+          }
+          Err(duration) => {
+            ntex::time::sleep(duration).await;
+          }
+        }
+      };
 
       snapshot = serde_json::from_slice(&response)?; // Evita utf8 + alloc
     }
@@ -150,15 +170,20 @@ impl BinanceSubClient {
 
       Some(())
     };
-    
+
     if update_id == 0 {
       book.borrow_mut().update_id = 1;
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
       let snapshot =
-        Self::process_binance_depth(symbol, utils.clone(), first_update_id, market.clone())
-          .await
-          .ok()?;
+        Self::process_binance_depth(symbol, utils.clone(), first_update_id, market.clone()).await;
+
+      if snapshot.is_err() {
+        book.borrow_mut().update_id = 0;
+        return None;
+      }
+
+      let snapshot = snapshot.ok()?;
 
       let mut retries = 0;
       let processed = loop {
@@ -242,7 +267,7 @@ impl BinanceSubClient {
     let (ic1, ic2) = (init.clone(), init);
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(5, Duration::from_millis(2500))
+      Ratelimiter::builder(5, Duration::from_millis(2050))
         .max_tokens(5)
         .initial_available(5)
         .build()
@@ -268,7 +293,7 @@ impl BinanceSubClient {
         Self::unsubscribe,
         CONNECT_LIMITER.clone(),
         send_limiter,
-      )
+      ),
     }
   }
 
