@@ -1,8 +1,8 @@
 use ntex::http::client::ClientResponse;
 use crate::{base::http::generic::HttpClient, exchange::binance::BinanceExchange};
 
-pub fn before(s: &str, character: char) -> &str {
-  match s.find(character) {
+pub fn before(s: &str) -> &str {
+  match s.find(':') {
     Some(pos) => &s[..pos],
     None => s,
   }
@@ -10,13 +10,8 @@ pub fn before(s: &str, character: char) -> &str {
 
 impl BinanceExchange {
   pub(super) fn normalize_symbol(&self, symbol: &str) -> String {
-    let market_type = if symbol.contains(':') {
-      "future"
-    } else {
-      "spot"
-    };
-    let formatted = before(symbol, ':').replace('/', "");
-    format!("{}@{}", formatted, market_type)
+    let formatted = before(symbol).replace('/', "");
+    formatted.to_string()
   }
 }
 

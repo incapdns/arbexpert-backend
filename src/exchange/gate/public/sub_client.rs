@@ -170,16 +170,9 @@ impl GateSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
-    let market_type = if let MarketType::Future = market {
-      "future"
-    } else {
-      "spot"
-    };
-    let formatted = format!("{}@{}", symbol, market_type);
-
     let book = {
       let borrow = shared.subscribed.borrow();
-      borrow.get(&formatted)?.clone()
+      borrow.get(symbol)?.clone()
     };
 
     let update_id = { book.borrow().update_id };
@@ -215,7 +208,7 @@ impl GateSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       book.borrow_mut().apply_update(&update);
-      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(&formatted)?);
+      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
       }
@@ -354,8 +347,6 @@ impl GateSubClient {
     time_offset_ms: i64,
     symbol: String,
   ) -> Result<String, Box<dyn Error>> {
-    let gate_symbol = before(&symbol, '@');
-
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
     let channel;
@@ -371,7 +362,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "subscribe",
-      "payload": [gate_symbol, "100ms"]
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
@@ -384,8 +375,6 @@ impl GateSubClient {
     time_offset_ms: i64,
     symbol: String,
   ) -> Result<String, Box<dyn Error>> {
-    let gate_symbol = before(&symbol, '@');
-
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
     let channel;
@@ -401,7 +390,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "unsubscribe",
-      "payload": [gate_symbol, "100ms"]
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
