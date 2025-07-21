@@ -50,9 +50,9 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(200, Duration::from_millis(11050))
-      .max_tokens(200)
-      .initial_available(200)
+    Ratelimiter::builder(6000, Duration::from_secs(61500))
+      .max_tokens(6000)
+      .initial_available(6000)
       .build()
       .unwrap(),
   )
@@ -267,7 +267,7 @@ impl BinanceSubClient {
     let (ic1, ic2) = (init.clone(), init);
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(5, Duration::from_millis(2050))
+      Ratelimiter::builder(5, Duration::from_millis(2500))
         .max_tokens(5)
         .initial_available(5)
         .build()
