@@ -10,6 +10,8 @@ use std::mem;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub type SharedBook = Rc<RefCell<OrderBook>>;
@@ -25,6 +27,7 @@ pub struct SubClient {
   pub subscribed: Subscribed,
   subscribe: Box<dyn Fn(String) -> DynString>,
   unsubscribe: Box<dyn Fn(String) -> DynString>,
+  connecting_id: AtomicU32,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
   connect_limiter: Arc<Ratelimiter>
 }
@@ -116,6 +119,7 @@ impl SubClient {
       subscribed,
       subscribe: subscribe_pin,
       unsubscribe: unsubscribe_pin,
+      connecting_id: AtomicU32::new(u32::MAX),
       connecting,
       connect_limiter
     }
@@ -139,7 +143,15 @@ impl SubClient {
 
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    self.connect().await?;
+    let mut connecting_id = 0;
+    let mut retries = 0;
+    while self.connecting_id.load(Ordering::Relaxed) != connecting_id  {
+      if retries > 0 {
+        println!("FUGA FUGA!");
+      }
+      connecting_id = self.connect().await?;
+      retries += 1;
+    }
 
     // prepara canal e detecta se é primeira vez
     let (tx, rx) = oneshot::channel();
@@ -205,16 +217,25 @@ impl SubClient {
     return Ok(());
   }
 
-  async fn connect(&self) -> Result<(), Box<dyn Error>> {
+  async fn connect(&self) -> Result<u32, Box<dyn Error>> {
     let mut connecting = None;
+
+    let connecting_id;
 
     {
       let ws_bm = self.ws.try_borrow_mut();
 
       if let Ok(mut ws) = ws_bm {
         if ws.is_connected() {
-          return Ok(());
+          connecting_id = self.connecting_id.load(Ordering::Relaxed);
+          return Ok(connecting_id);
         }
+
+        if self.connecting_id.load(Ordering::Relaxed) == u32::MAX {
+          self.connecting_id.store(0, Ordering::Relaxed);
+        }
+
+        connecting_id = self.connecting_id.fetch_add(1, Ordering::Relaxed) + 1;
 
         let (result, senders) = loop {
           match self.connect_limiter.try_wait() {
@@ -240,6 +261,7 @@ impl SubClient {
           let mut connecting_bm = self.connecting.borrow_mut();
           connecting_bm.push(tx);
         }
+        connecting_id = self.connecting_id.load(Ordering::Relaxed);
         let _ = rx.await?;
       }
     }
@@ -250,6 +272,6 @@ impl SubClient {
       }
     }
 
-    Ok(())
+    Ok(connecting_id)
   }
 }
