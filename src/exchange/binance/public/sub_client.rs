@@ -83,7 +83,7 @@ impl BinanceSubClient {
       let headers = from_headers!([("Accept", "application/json")]);
 
       let response = loop {
-        match HTTP_LIMITER.try_wait() {
+        match HTTP_LIMITER.try_wait_n(5) {
           Ok(()) => {
             break utils
               .http_client

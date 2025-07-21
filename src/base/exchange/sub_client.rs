@@ -144,13 +144,8 @@ impl SubClient {
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     let mut connecting_id = 0;
-    let mut retries = 0;
     while self.connecting_id.load(Ordering::Relaxed) != connecting_id  {
-      if retries > 0 {
-        println!("FUGA FUGA!");
-      }
       connecting_id = self.connect().await?;
-      retries += 1;
     }
 
     // prepara canal e detecta se é primeira vez
