@@ -1,7 +1,7 @@
 use crate::{base::http::generic::HttpClient, exchange::gate::GateExchange};
 use ntex::http::client::ClientResponse;
 
-pub fn before(s: &str) -> &str {
+fn before(s: &str) -> &str {
   match s.find(':') {
     Some(pos) => &s[..pos],
     None => s,

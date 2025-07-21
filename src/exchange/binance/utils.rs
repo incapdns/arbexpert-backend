@@ -1,7 +1,7 @@
 use ntex::http::client::ClientResponse;
 use crate::{base::http::generic::HttpClient, exchange::binance::BinanceExchange};
 
-pub fn before(s: &str) -> &str {
+fn before(s: &str) -> &str {
   match s.find(':') {
     Some(pos) => &s[..pos],
     None => s,

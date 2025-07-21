@@ -6,7 +6,6 @@ use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
-use crate::exchange::binance::utils::before;
 use crate::from_headers;
 use once_cell::sync::Lazy;
 use ratelimit::Ratelimiter;
