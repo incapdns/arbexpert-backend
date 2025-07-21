@@ -1,15 +1,26 @@
 {
-  "version": "0.2.0",
   "configurations": [
     {
-      "type": "cppvsdbg",
+      "type": "lldb",
       "request": "launch",
-      "name": "Debug arbexpert.exe (cppvsdbg)",
+      "name": "Debug Rust Binary",
       "program": "${workspaceFolder}/target/debug/arbexpert.exe",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "stopAtEntry": false
+      "sourceLanguages": [
+        "rust"
+      ],
+      "initCommands": [
+        "settings set target.max-children-count 0",
+        "settings set target.prefer-dynamic-value no-dynamic-values",
+        "settings set target.display-recognized-arguments false",
+        "settings set stop-disassembly-display never"
+      ],
+      "cargo": {
+        "args": [
+          "build"
+        ]
+      }
     }
   ]
 }
