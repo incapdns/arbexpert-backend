@@ -18,7 +18,7 @@ use crate::{
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
   exchange::binance::{
-    BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils, public::sub_client::HTTP_LIMITER,
+    BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils, public::sub_client::{SPOT_HTTP_LIMITER, FUTURE_HTTP_LIMITER},
   },
   from_headers,
 };
@@ -54,17 +54,17 @@ impl BinanceExchange {
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
-    let weight;
+    let limiter;
     let url = if let MarketType::Spot = market {
-      weight = 20;
+      limiter = (20, &SPOT_HTTP_LIMITER);
       "https://api.binance.com/api/v3/exchangeInfo"
     } else {
-      weight = 1;
+      limiter = (1, &FUTURE_HTTP_LIMITER);
       "https://fapi.binance.com/fapi/v1/exchangeInfo"
     };
 
     let response = loop {
-      match HTTP_LIMITER.try_wait_n(weight) {
+      match limiter.1.try_wait_n(limiter.0) {
         Ok(()) => {
           break self
             .utils
@@ -188,7 +188,7 @@ impl BinanceExchange {
     let headers: HashMap<String, String> = HashMap::new();
 
     let response = loop {
-      match HTTP_LIMITER.try_wait() {
+      match SPOT_HTTP_LIMITER.try_wait() {
         Ok(()) => {
           break self
             .utils

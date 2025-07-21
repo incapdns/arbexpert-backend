@@ -47,11 +47,21 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
-pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(5950, Duration::from_millis(61500))
       .max_tokens(5950)
       .initial_available(5950)
+      .build()
+      .unwrap(),
+  )
+});
+
+pub static FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+  Arc::new(
+    Ratelimiter::builder(2350, Duration::from_millis(61500))
+      .max_tokens(2350)
+      .initial_available(2350)
       .build()
       .unwrap(),
   )
@@ -71,19 +81,19 @@ impl BinanceSubClient {
     };
 
     while snapshot.last_update_id < initial_event_u {
-      let uri = match market {
-        MarketType::Spot => {
-          format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
-        }
-        MarketType::Future => {
-          format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
-        }
+      let limiter;
+      let uri = if let MarketType::Spot = market {
+        limiter = &SPOT_HTTP_LIMITER;
+        format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
+      } else {
+        limiter = &FUTURE_HTTP_LIMITER;
+        format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
       };
 
       let headers = from_headers!([("Accept", "application/json")]);
 
       let response = loop {
-        match HTTP_LIMITER.try_wait_n(5) {
+        match limiter.try_wait_n(5) {
           Ok(()) => {
             break utils
               .http_client
