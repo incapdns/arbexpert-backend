@@ -27,7 +27,6 @@ impl BinanceExchange {
         spot_clients: RefCell::new(Vec::new()),
         future_clients: RefCell::new(Vec::new()),
         assets: None,
-        pairs: Rc::new(RefCell::new(HashMap::new())),
         time_offset_ms: 0,
       },
       utils: Rc::new(BinanceExchangeUtils::new(NtexHttpClient::new())),

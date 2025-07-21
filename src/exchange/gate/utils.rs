@@ -1,8 +1,8 @@
-use ntex::http::client::ClientResponse;
 use crate::{base::http::generic::HttpClient, exchange::gate::GateExchange};
+use ntex::http::client::ClientResponse;
 
-fn before(s: &str) -> &str {
-  match s.find(':') {
+pub fn before(s: &str, character: char) -> &str {
+  match s.find(character) {
     Some(pos) => &s[..pos],
     None => s,
   }
@@ -10,11 +10,13 @@ fn before(s: &str) -> &str {
 
 impl GateExchange {
   pub(super) fn normalize_symbol(&self, symbol: &str) -> String {
-    let result = symbol.replace('/', "_").to_uppercase();
-    let result = before(&result);
-    let mut borrow = self.public.pairs.borrow_mut();
-    borrow.insert(result.to_string(), symbol.to_string());
-    result.to_string()
+    let market_type = if symbol.contains(':') {
+      "future"
+    } else {
+      "spot"
+    };
+    let formatted = before(symbol, ':').replace('/', "_");
+    format!("{}@{}", formatted, market_type)
   }
 }
 

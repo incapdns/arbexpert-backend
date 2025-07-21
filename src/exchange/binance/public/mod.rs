@@ -9,6 +9,5 @@ pub struct BinanceExchangePublic {
   pub spot_clients: RefCell<Vec<Rc<BinanceSubClient>>>,
   pub future_clients: RefCell<Vec<Rc<BinanceSubClient>>>,
   pub assets: Option<Assets>,
-  pub pairs: Rc<RefCell<HashMap<String, String>>>,
   pub time_offset_ms: i64,
 }

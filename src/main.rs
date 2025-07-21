@@ -1,9 +1,12 @@
 use crate::{
-  base::exchange::assets::{Asset, MarketType}, exchange::{gate::GateExchange, mexc::MexcExchange}, utils::exchange::setup_exchanges, worker::{
+  base::exchange::assets::{Asset, MarketType},
+  exchange::{gate::GateExchange, mexc::MexcExchange},
+  utils::exchange::setup_exchanges,
+  worker::{
     commands::{Request, StartArbitrage, StartMonitor},
     state::GlobalState,
     worker_loop,
-  }
+  },
 };
 use async_channel::unbounded;
 use futures::{StreamExt, TryStreamExt, stream::FuturesUnordered};
@@ -479,6 +482,7 @@ async fn main() -> std::io::Result<()> {
   Server::build()
     .workers(num_cpus::get())
     .on_worker_start(move || on_worker_start(worker_global_state.clone()))
+    .maxconn(292010290322020)
     .listen("http", std_listener, move |_| {
       HttpService::build().finish(
         App::new()

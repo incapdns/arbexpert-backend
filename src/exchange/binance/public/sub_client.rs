@@ -5,6 +5,7 @@ use crate::base::exchange::sub_client::Shared;
 use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
+use crate::exchange::binance::utils::before;
 use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
 use once_cell::sync::Lazy;
@@ -105,9 +106,16 @@ impl BinanceSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
+    let market_type = if let MarketType::Future = market {
+      "future"
+    } else {
+      "spot"
+    };
+    let formatted = format!("{}@{}", symbol, market_type);
+
     let book = {
       let borrow = shared.subscribed.borrow();
-      borrow.get(symbol)?.clone()
+      borrow.get(&formatted)?.clone()
     };
 
     let update_id = { book.borrow().update_id };
@@ -135,15 +143,14 @@ impl BinanceSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       book.borrow_mut().apply_update(&update);
-
-      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
+      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(&formatted)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
       }
 
       Some(())
     };
-
+    
     if update_id == 0 {
       book.borrow_mut().update_id = 1;
       init.borrow_mut().entry(symbol.to_string()).or_default();
@@ -277,10 +284,12 @@ impl BinanceSubClient {
 
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
   pub async fn subscribe(symbol: String) -> Result<String, Box<dyn Error>> {
+    let binance_symbol = before(&symbol, '@');
+
     let msg = json!({
       "method": "SUBSCRIBE",
       "params": [
-        format!("{}@depth@100ms", symbol.to_lowercase()),
+        format!("{}@depth@100ms", binance_symbol.to_lowercase()),
       ],
     })
     .to_string();
@@ -290,10 +299,12 @@ impl BinanceSubClient {
 
   /// Cancela inscrição e limpa pendentes
   pub async fn unsubscribe(symbol: String) -> Result<String, Box<dyn Error>> {
+    let binance_symbol = before(&symbol, '@');
+
     let msg = json!({
       "method": "UNSUBSCRIBE",
       "params": [
-        format!("{}@depth@100ms", symbol.to_lowercase()),
+        format!("{}@depth@100ms", binance_symbol.to_lowercase()),
       ],
     })
     .to_string();

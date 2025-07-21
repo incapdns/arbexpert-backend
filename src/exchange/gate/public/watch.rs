@@ -20,14 +20,14 @@ impl GateExchange {
     } else {
       MarketType::Spot
     };
-    let symbol = normalized.as_str();
+    let formatted = normalized.as_str();
 
     // 1) Se já houver client com esse symbol, usa ele
     if let Some(client) = {
       let guard = sub_clients.borrow();
-      guard.iter().find(|c| c.has_symbol(symbol)).cloned()
+      guard.iter().find(|c| c.has_symbol(formatted)).cloned()
     } {
-      return client.watch(symbol).await;
+      return client.watch(formatted).await;
     }
 
     // 2) Se houver client com < 7 subscriptions, usa ele
@@ -35,7 +35,7 @@ impl GateExchange {
       let guard = sub_clients.borrow();
       guard.iter().find(|c| c.subscribed_count() < 35).cloned()
     } {
-      return client.watch(symbol).await;
+      return client.watch(formatted).await;
     }
 
     // Empurra o novo client para o vetor
@@ -47,7 +47,7 @@ impl GateExchange {
       rc_new_sc
     };
 
-    let book = rc_new_sc.watch(symbol).await?;
+    let book = rc_new_sc.watch(formatted).await?;
 
     Ok(book)
   }
@@ -62,20 +62,20 @@ impl GateExchange {
       &self.public.spot_clients
     };
 
-    let symbol = normalized.as_str();
+    let formatted = normalized.as_str();
 
     if let Some(pos) = {
       sub_clients
         .borrow()
         .iter()
-        .position(|c| c.has_symbol(symbol))
+        .position(|c| c.has_symbol(formatted))
     } {
       let client = {
         let guard = sub_clients.borrow();
         guard[pos].clone()
       };
 
-      client.unwatch(symbol).await?;
+      client.unwatch(formatted).await?;
       if client.subscribed_count() == 0 {
         let mut guard = sub_clients.borrow_mut();
         guard.remove(pos);

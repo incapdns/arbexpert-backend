@@ -5,6 +5,7 @@ use crate::base::exchange::sub_client::Shared;
 use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
+use crate::exchange::gate::utils::before;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
 use once_cell::sync::Lazy;
@@ -141,9 +142,16 @@ impl GateSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
+    let market_type = if let MarketType::Future = market {
+      "future"
+    } else {
+      "spot"
+    };
+    let formatted = format!("{}@{}", symbol, market_type);
+
     let book = {
       let borrow = shared.subscribed.borrow();
-      borrow.get(symbol)?.clone()
+      borrow.get(&formatted)?.clone()
     };
 
     let update_id = { book.borrow().update_id };
@@ -179,8 +187,7 @@ impl GateSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       book.borrow_mut().apply_update(&update);
-
-      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
+      let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(&formatted)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
       }
@@ -314,6 +321,8 @@ impl GateSubClient {
     time_offset_ms: i64,
     symbol: String,
   ) -> Result<String, Box<dyn Error>> {
+    let gate_symbol = before(&symbol, '@');
+
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
     let channel;
@@ -329,7 +338,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "subscribe",
-      "payload": [symbol, "100ms"]
+      "payload": [gate_symbol, "100ms"]
     })
     .to_string();
 
@@ -342,6 +351,8 @@ impl GateSubClient {
     time_offset_ms: i64,
     symbol: String,
   ) -> Result<String, Box<dyn Error>> {
+    let gate_symbol = before(&symbol, '@');
+
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
     let channel;
@@ -357,7 +368,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "unsubscribe",
-      "payload": [symbol, "100ms"]
+      "payload": [gate_symbol, "100ms"]
     })
     .to_string();
 
