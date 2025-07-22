@@ -232,7 +232,7 @@ impl BinanceExchange {
 
       let connect_limiter = Ratelimiter::builder(300, Duration::from_secs(300))
         .max_tokens(300)
-        .initial_available(300)
+        .initial_available(300 - 1)
         .sync_time(self.public.time_offset_ms as u64, 2000)
         .build()
         .unwrap();
@@ -245,27 +245,27 @@ impl BinanceExchange {
 
       let spot_http_limiter = Ratelimiter::builder(5950, Duration::from_millis(61500))
         .max_tokens(5950)
-        .initial_available(5950)
+        .initial_available(5950 - 1)
         .sync_time(self.public.time_offset_ms as u64, 2000)
         .build()
         .unwrap();
 
       unsafe {
         let arc_mut = &mut *SPOT_HTTP_LIMITER;
-        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *connect_limit_ptr = spot_http_limiter;
+        let spot_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *spot_limit_ptr = spot_http_limiter;
       }
 
       let future_http_limiter = Ratelimiter::builder(2350, Duration::from_millis(61500))
         .max_tokens(2350)
-        .initial_available(2350)
+        .initial_available(2350 - 1)
         .build()
         .unwrap();
 
       unsafe {
         let arc_mut = &mut *FUTURE_HTTP_LIMITER;
-        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *connect_limit_ptr = future_http_limiter;
+        let future_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *future_limit_ptr = future_http_limiter;
       }
 
       Ok(())

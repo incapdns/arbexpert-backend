@@ -366,21 +366,21 @@ pub struct Builder {
 }
 
 struct TimeSync {
-  base_external_nanos: u64,
+  base_external_nanos: u128,
   base_local_instant: Instant,
 }
 
 impl TimeSync {
-  fn new(external_nanos: u64) -> Self {
+  fn new(external_nanos: u128) -> Self {
     Self {
       base_external_nanos: external_nanos,
       base_local_instant: Instant::now(),
     }
   }
 
-  fn external_to_instant(&self, future_external_nanos: u64) -> Instant {
+  fn external_to_instant(&self, future_external_nanos: u128) -> Instant {
     let delta = future_external_nanos.saturating_sub(self.base_external_nanos);
-    self.base_local_instant + Duration::from_nanos(delta)
+    self.base_local_instant + Duration::from_nanos(delta as u64)
   }
 }
 
@@ -454,8 +454,8 @@ impl Builder {
     let mut now: Instant = Instant::now();
 
     if let Some(ms_timestamp) = self.external_ms {
-      let external_nanos = ms_timestamp * 1_000_000;
-      let margin_nanos = self.external_ms_margin * 1_000_000;
+      let external_nanos = ms_timestamp as u128 * 1_000_000;
+      let margin_nanos = self.external_ms_margin as u128 * 1_000_000;
       let future_external_nanos = external_nanos + margin_nanos;
       
       now = TimeSync::new(external_nanos)

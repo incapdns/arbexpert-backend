@@ -242,14 +242,14 @@ impl GateExchange {
 
       let http_limiter = Ratelimiter::builder(200, Duration::from_millis(11500))
         .max_tokens(200)
-        .initial_available(200)
+        .initial_available(200 - 1)
         .build()
         .unwrap();
 
       unsafe {
         let arc_mut = &mut *HTTP_LIMITER;
-        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *connect_limit_ptr = http_limiter;
+        let http_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *http_limit_ptr = http_limiter;
       }
 
       Ok(())
