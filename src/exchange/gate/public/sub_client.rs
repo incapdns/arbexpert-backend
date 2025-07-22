@@ -50,17 +50,17 @@ struct FutureDepthSnapshot {
   asks: Vec<FutureDepthSnapshotItem>,
 }
 
-pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(170, Duration::from_secs(300))
-      .max_tokens(170)
-      .initial_available(170)
+    Ratelimiter::builder(300, Duration::MAX)
+      .max_tokens(300)
+      .initial_available(300)
       .build()
       .unwrap(),
   )
 });
 
-pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(200, Duration::from_millis(11500))
       .max_tokens(200)
@@ -71,6 +71,7 @@ pub static HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 });
 
 impl GateSubClient {
+  #[allow(static_mut_refs)]
   async fn process_gate_depth(
     symbol: &str,
     utils: Rc<GateExchangeUtils>,
@@ -104,7 +105,7 @@ impl GateSubClient {
       let headers = from_headers!([("Accept", "application/json")]);
 
       let response = loop {
-        match HTTP_LIMITER.try_wait() {
+        match unsafe { &HTTP_LIMITER }.try_wait() {
           Ok(()) => {
             break utils
               .http_client
@@ -284,6 +285,7 @@ impl GateSubClient {
     init.borrow_mut().clear();
   }
 
+  #[allow(static_mut_refs)]
   pub fn new(utils: Rc<GateExchangeUtils>, market: MarketType, time_offset_ms: i64) -> Self {
     let ws_url = if let MarketType::Spot = market {
       "wss://api.gateio.ws/ws/v4/"
@@ -324,7 +326,7 @@ impl GateSubClient {
         },
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
-        CONNECT_LIMITER.clone(),
+        unsafe { CONNECT_LIMITER.clone() },
         send_limiter,
       ),
     }

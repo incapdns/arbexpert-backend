@@ -2,11 +2,12 @@ use std::{
   cell::RefCell,
   collections::HashMap,
   rc::Rc,
-  sync::{LazyLock, Mutex},
-  time::{SystemTime, UNIX_EPOCH},
+  sync::{Arc, LazyLock, Mutex},
+  time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures::join;
+use ratelimit::Ratelimiter;
 
 use crate::{
   base::{
@@ -50,6 +51,7 @@ impl GateExchange {
     "Gate".to_string()
   }
 
+  #[allow(static_mut_refs)]
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
@@ -60,7 +62,7 @@ impl GateExchange {
     };
 
     let response = loop {
-      match HTTP_LIMITER.try_wait() {
+      match unsafe { &HTTP_LIMITER }.try_wait() {
         Ok(()) => {
           break self
             .utils
@@ -187,6 +189,7 @@ impl GateExchange {
     Ok(self.public.assets.clone().unwrap())
   }
 
+  #[allow(static_mut_refs)]
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {
     let _lock = SYNC_TIME.lock();
     let mut lock = TIME_OFFSET_MS.lock().unwrap();
@@ -199,7 +202,7 @@ impl GateExchange {
     let headers: HashMap<String, String> = HashMap::new();
 
     let response = loop {
-      match HTTP_LIMITER.try_wait() {
+      match unsafe { &HTTP_LIMITER }.try_wait() {
         Ok(()) => {
           break self
             .utils
@@ -236,6 +239,19 @@ impl GateExchange {
 
       self.public.time_offset_ms = server_time - local_time;
       *lock = self.public.time_offset_ms;
+
+      let http_limiter = Ratelimiter::builder(200, Duration::from_millis(11500))
+        .max_tokens(200)
+        .initial_available(200)
+        .build()
+        .unwrap();
+
+      unsafe {
+        let arc_mut = &mut *HTTP_LIMITER;
+        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *connect_limit_ptr = http_limiter;
+      }
+
       Ok(())
     } else {
       Err(ExchangeError::ApiError(
