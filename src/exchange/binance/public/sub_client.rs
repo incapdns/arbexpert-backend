@@ -37,7 +37,7 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(300, Duration::from_secs(300))
       .max_tokens(300)
@@ -47,7 +47,7 @@ pub static CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
-pub static SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static mut SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(5950, Duration::from_millis(61500))
       .max_tokens(5950)
@@ -57,7 +57,7 @@ pub static SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
-pub static FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
+pub static mut FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
     Ratelimiter::builder(2350, Duration::from_millis(61500))
       .max_tokens(2350)
@@ -68,6 +68,7 @@ pub static FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 });
 
 impl BinanceSubClient {
+  #[allow(static_mut_refs)]
   async fn process_binance_depth(
     symbol: &str,
     utils: Rc<BinanceExchangeUtils>,
@@ -83,10 +84,10 @@ impl BinanceSubClient {
     while snapshot.last_update_id < initial_event_u {
       let limiter;
       let uri = if let MarketType::Spot = market {
-        limiter = &SPOT_HTTP_LIMITER;
+        limiter = unsafe { &SPOT_HTTP_LIMITER };
         format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
       } else {
-        limiter = &FUTURE_HTTP_LIMITER;
+        limiter = unsafe { &FUTURE_HTTP_LIMITER };
         format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
       };
 
@@ -257,6 +258,7 @@ impl BinanceSubClient {
   }
 
   /// Cria e conecta imediatamente
+  #[allow(static_mut_refs)]
   pub fn new(utils: Rc<BinanceExchangeUtils>, market: MarketType) -> Self {
     let ws_url = if let MarketType::Spot = market {
       "wss://stream.binance.com/ws"
@@ -293,7 +295,7 @@ impl BinanceSubClient {
         },
         Self::subscribe,
         Self::unsubscribe,
-        CONNECT_LIMITER.clone(),
+        unsafe { CONNECT_LIMITER.clone() },
         send_limiter,
       ),
     }

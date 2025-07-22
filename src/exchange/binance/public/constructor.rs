@@ -3,11 +3,12 @@ use std::{
   collections::HashMap,
   ops::DerefMut,
   rc::Rc,
-  sync::{LazyLock, Mutex},
-  time::{SystemTime, UNIX_EPOCH},
+  sync::{Arc, LazyLock, Mutex},
+  time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures::join;
+use ratelimit::Ratelimiter;
 
 use crate::{
   base::{
@@ -18,7 +19,8 @@ use crate::{
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
   exchange::binance::{
-    BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils, public::sub_client::{SPOT_HTTP_LIMITER, FUTURE_HTTP_LIMITER},
+    BinanceExchange, BinanceExchangePublic, BinanceExchangeUtils,
+    public::sub_client::{CONNECT_LIMITER, FUTURE_HTTP_LIMITER, SPOT_HTTP_LIMITER},
   },
   from_headers,
 };
@@ -51,15 +53,16 @@ impl BinanceExchange {
     "Binance".to_string()
   }
 
+  #[allow(static_mut_refs)]
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
     let limiter;
     let url = if let MarketType::Spot = market {
-      limiter = (20, &SPOT_HTTP_LIMITER);
+      limiter = (20, unsafe { &SPOT_HTTP_LIMITER });
       "https://api.binance.com/api/v3/exchangeInfo"
     } else {
-      limiter = (1, &FUTURE_HTTP_LIMITER);
+      limiter = (1, unsafe { &FUTURE_HTTP_LIMITER });
       "https://fapi.binance.com/fapi/v1/exchangeInfo"
     };
 
@@ -176,6 +179,7 @@ impl BinanceExchange {
     Ok(self.public.assets.clone().unwrap())
   }
 
+  #[allow(static_mut_refs)]
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {
     let _lock = SYNC_TIME.lock();
     let mut lock = TIME_OFFSET_MS.lock().unwrap();
@@ -188,7 +192,7 @@ impl BinanceExchange {
     let headers: HashMap<String, String> = HashMap::new();
 
     let response = loop {
-      match SPOT_HTTP_LIMITER.try_wait() {
+      match unsafe { &SPOT_HTTP_LIMITER }.try_wait() {
         Ok(()) => {
           break self
             .utils
@@ -225,6 +229,45 @@ impl BinanceExchange {
 
       self.public.time_offset_ms = server_time - local_time;
       *lock = self.public.time_offset_ms;
+
+      let connect_limiter = Ratelimiter::builder(300, Duration::from_secs(300))
+        .max_tokens(300)
+        .initial_available(300)
+        .sync_time(self.public.time_offset_ms as u64, 2000)
+        .build()
+        .unwrap();
+
+      unsafe {
+        let arc_mut = &mut *CONNECT_LIMITER;
+        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *connect_limit_ptr = connect_limiter;
+      }
+
+      let spot_http_limiter = Ratelimiter::builder(5950, Duration::from_millis(61500))
+        .max_tokens(5950)
+        .initial_available(5950)
+        .sync_time(self.public.time_offset_ms as u64, 2000)
+        .build()
+        .unwrap();
+
+      unsafe {
+        let arc_mut = &mut *SPOT_HTTP_LIMITER;
+        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *connect_limit_ptr = spot_http_limiter;
+      }
+
+      let future_http_limiter = Ratelimiter::builder(2350, Duration::from_millis(61500))
+        .max_tokens(2350)
+        .initial_available(2350)
+        .build()
+        .unwrap();
+
+      unsafe {
+        let arc_mut = &mut *FUTURE_HTTP_LIMITER;
+        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
+        *connect_limit_ptr = future_http_limiter;
+      }
+
       Ok(())
     } else {
       Err(ExchangeError::ApiError(
