@@ -282,9 +282,9 @@ impl BinanceSubClient {
     let server_time = now + time_offset_ms;
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(3, Duration::from_secs(1))
-        .max_tokens(3)
-        .initial_available(3)
+      Ratelimiter::builder(2, Duration::from_secs(1))
+        .max_tokens(2)
+        .initial_available(2)
         .alignment(Alignment::Second)
         .sync_time(server_time as u64)
         .build()
