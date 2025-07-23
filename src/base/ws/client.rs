@@ -1,7 +1,7 @@
 use atomic::Atomic;
 use bytemuck::{Pod, Zeroable};
-use futures::StreamExt;
 use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use ntex::channel::{mpsc, oneshot};
 use ntex::tls::rustls::TlsConnector;
 use ntex::util::{ByteString, Bytes};
@@ -16,6 +16,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::task::{Context, Poll};
 use std::{error::Error, time::Duration};
 use url::Url;
 
@@ -94,6 +95,40 @@ impl TryFrom<ConnectStatusRepr> for ConnectStatus {
       _ => Err(()),
     }
   }
+}
+
+struct ConditionalFuture<F: Future + Unpin> {
+  inner_future: Option<F>,
+}
+
+impl<F: Future + Unpin> ConditionalFuture<F> {
+  fn new(future: F) -> Self {
+    ConditionalFuture {
+      inner_future: Some(future),
+    }
+  }
+}
+
+impl<F: Future + Unpin> Future for ConditionalFuture<F> {
+  type Output = Result<F::Output, F>;
+
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let mut this = self.as_mut();
+
+    let mut inner_future = this.inner_future.take().unwrap();
+    let pinned = Pin::new(&mut inner_future);
+
+    match pinned.poll(cx) {
+      Poll::Ready(val) => Poll::Ready(Ok(val)),
+      Poll::Pending => Poll::Ready(Err(inner_future)),
+    }
+  }
+}
+
+macro_rules! project {
+  ($self:ident) => {{
+    ConditionalFuture::new($self).await
+  }};
 }
 
 impl WsClient {
@@ -256,7 +291,7 @@ impl WsClient {
                 }
               }
             }
-          } else { 
+          } else {
             sink.send(message).await
           }
         }
@@ -284,12 +319,22 @@ impl WsClient {
               Some(result) => {
                 match result {
                   Ok(ws::Frame::Binary(bin)) => {
-                    client_tasks.push((on_binary)(bin.to_vec()));
+                    let task = (on_binary)(bin.to_vec());
+                    let task_projection = project!(task);
+
+                    if task_projection.is_err() {
+                      client_tasks.push(task_projection.err().unwrap());
+                    }
                   }
                   Ok(ws::Frame::Text(txt)) => {
                     let str = String::from_utf8(txt.to_vec());
                     if let Ok(txt) = str {
-                      client_tasks.push((on_message)(txt));
+                      let task = (on_message)(txt);
+                      let task_projection = project!(task);
+
+                      if task_projection.is_err() {
+                        client_tasks.push(task_projection.err().unwrap());
+                      }
                     } else {
                       break "Parser utf8 failed".to_string();
                     }

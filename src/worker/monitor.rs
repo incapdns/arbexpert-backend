@@ -23,8 +23,7 @@ async fn detect_arbitrage<'a>(
   arbitrage: Arc<Arbitrage>,
   state: Arc<GlobalState>,
 ) -> Reenter<'a> {
-  let arbitrage_cl = Arc::clone(&arbitrage);
-  let snapshot = unsafe { &mut *arbitrage_cl.snapshot.get() };
+  let snapshot = unsafe { &mut *arbitrage.snapshot.get() };
 
   let target;
 
@@ -98,7 +97,7 @@ async fn detect_arbitrage<'a>(
     need_notification = need_notification && valid;
 
     if need_notification {
-      let notification = serde_json::to_string(arbitrage_cl.as_ref());
+      let notification = serde_json::to_string(arbitrage.as_ref());
 
       if let Ok(json) = notification {
         let _ = state.ws_tx.try_broadcast(json);
@@ -112,7 +111,7 @@ async fn detect_arbitrage<'a>(
     spot,
     future,
     symbol,
-    arbitrage: arbitrage_cl,
+    arbitrage,
   }
 }
 

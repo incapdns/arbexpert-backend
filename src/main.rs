@@ -494,6 +494,8 @@ async fn main() -> std::io::Result<()> {
 
   let worker_global_state = global_state.clone();
 
+  //test::simulate_websocket_with_network_jitter_test().await;
+
   Server::build()
     .workers(num_cpus::get())
     .on_worker_start(move || on_worker_start(worker_global_state.clone()))
