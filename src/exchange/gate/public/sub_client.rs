@@ -1,4 +1,3 @@
-use crate::BREAKPOINT;
 use crate::base::exchange::assets::MarketType;
 use crate::base::exchange::order::OrderBook;
 use crate::base::exchange::order::OrderBookUpdate;
@@ -94,13 +93,13 @@ impl GateSubClient {
       let uri = match market {
         MarketType::Spot => {
           format!(
-            "https://api.gateio.ws/api/v4/spot/order_book?currency_pair={}&with_id=true",
+            "https://api.gateio.ws/api/v4/spot/order_book?currency_pair={}&limit=100&with_id=true",
             symbol
           )
         }
         MarketType::Future => {
           format!(
-            "https://fx-api.gateio.ws/api/v4/futures/usdt/order_book?contract={}&with_id=true",
+            "https://fx-api.gateio.ws/api/v4/futures/usdt/order_book?contract={}&limit=100&with_id=true",
             symbol
           )
         }
@@ -403,7 +402,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "subscribe",
-      "payload": [symbol, "100ms"]
+      "payload": [symbol, "100ms", "100"]
     })
     .to_string();
 
@@ -431,7 +430,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "unsubscribe",
-      "payload": [symbol, "100ms"]
+      "payload": [symbol, "100ms", "100"]
     })
     .to_string();
 
