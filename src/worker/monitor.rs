@@ -75,12 +75,6 @@ async fn detect_arbitrage<'a>(
 
     let mut need_notification = entry_delta > percent || exit_delta > percent;
 
-    if !symbol.contains(':') {
-      snapshot.spot_ob = order_book.borrow().clone();
-    } else {
-      snapshot.future_ob = order_book.borrow().clone();
-    }
-
     snapshot.entry_percent = new_entry_percent;
     snapshot.exit_percent = new_exit_percent;
 

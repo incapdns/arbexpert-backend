@@ -169,9 +169,7 @@ pub struct ArbitrageSnaphot {
   //#[serde(skip)]
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
-  pub exit_percent: Decimal,
-  pub spot_ob: OrderBook,
-  pub future_ob: OrderBook
+  pub exit_percent: Decimal
 }
 
 impl Default for ArbitrageSnaphot {
@@ -184,9 +182,7 @@ impl Default for ArbitrageSnaphot {
       future_ask: dec!(0),
       future_bid: dec!(0),
       entry_percent: dec!(0),
-      exit_percent: dec!(0),
-      spot_ob: OrderBook::default(),
-      future_ob: OrderBook::default()
+      exit_percent: dec!(0)
     }
   }
 }
@@ -297,9 +293,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_ask: dec!(0),
             spot_bid: dec!(0),
             future_ask: dec!(0),
-            future_bid: dec!(0),
-            spot_ob: OrderBook::default(),
-            future_ob: OrderBook::default()
+            future_bid: dec!(0)
           }),
         }));
       }

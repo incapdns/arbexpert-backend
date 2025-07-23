@@ -65,7 +65,7 @@ impl OrderBook {
     for (price, qty) in update.bids.iter() {
       let key = Reverse(price.clone());
       if qty.eq(&zero) {
-        self.bids.remove(&key).is_some();
+        self.bids.remove(&key);
       } else {
         self.bids.insert(key, qty.clone());
       }
@@ -73,7 +73,7 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&zero) {
-        self.asks.remove(price).is_some();
+        self.asks.remove(price);
       } else {
         self.asks.insert(price.clone(), qty.clone());
       }
