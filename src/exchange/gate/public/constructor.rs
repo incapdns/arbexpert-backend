@@ -242,7 +242,7 @@ impl GateExchange {
 
       let http_limiter = Ratelimiter::builder(200, Duration::from_millis(11500))
         .max_tokens(200)
-        .initial_available(200 - 1)
+        .initial_available(200)
         .build()
         .unwrap();
 

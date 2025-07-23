@@ -9,6 +9,5 @@ homepage = "https://github.com/pelikan-io/rustcommon"
 repository = "https://github.com/pelikan-io/rustcommon"
 
 [dependencies]
-clocksource = { version = "0.8.0", path = "../clocksource" }
 parking_lot = "0.12.1"
 thiserror = "1.0.40"

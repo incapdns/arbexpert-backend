@@ -500,15 +500,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clocksource"
-version = "0.8.2"
-dependencies = [
- "libc",
- "time",
- "winapi",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2450,7 +2441,6 @@ dependencies = [
 name = "ratelimit"
 version = "0.10.0"
 dependencies = [
- "clocksource",
  "parking_lot",
  "thiserror 1.0.69",
 ]
