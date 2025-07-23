@@ -274,7 +274,7 @@ impl GateSubClient {
         book_bm.apply_update(&update);
       }
 
-      println!("Book: {:?}", book_bm);
+      println!("Book(): {} {:?}", symbol, book_bm);
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
