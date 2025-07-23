@@ -181,7 +181,7 @@ impl GateSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
-    println!("U({}): {:?}", symbol, first_update_id);
+    println!("U({}): {} | Market {:?}", symbol, first_update_id, market);
 
     let book = {
       let borrow = shared.subscribed.borrow();
