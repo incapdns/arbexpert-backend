@@ -178,7 +178,7 @@ impl GateSubClient {
     let first_update_id = parsed["U"].as_u64()?;
 
     if unsafe { TESTING } {
-      println!("U({}): {} | Market {:?}", symbol, first_update_id, market);
+      println!("U({}): {} | Market {:?} | {}", symbol, first_update_id, market, text);
     }
 
     let book = {
@@ -220,7 +220,7 @@ impl GateSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       let result = book.borrow_mut().apply_update(&update);
-      if !result {
+      if !result && unsafe { TESTING } {
         println!("Symbol: {:?} | Market {:?}", symbol, market);
         unsafe {
           TESTING = false;
