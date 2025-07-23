@@ -166,6 +166,7 @@ impl GateSubClient {
     market: MarketType,
   ) -> Option<()> {
     let parsed: Value = serde_json::from_str(text).ok()?;
+    let full = parsed["full"].as_bool().unwrap_or(false);
     let parsed = &parsed["result"];
     let symbol = parsed["s"].as_str()?;
     let last_update_id = parsed["u"].as_u64()?;
@@ -204,7 +205,7 @@ impl GateSubClient {
         bids: parse_side(&parsed["b"])?,
         last_update_id,
         first_update_id,
-        full: parsed["full"].as_bool().unwrap_or(false)
+        full
       })
     };
 
