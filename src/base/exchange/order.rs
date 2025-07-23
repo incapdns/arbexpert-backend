@@ -71,7 +71,7 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&dec!(0)) {
-        self.asks.remove(&price);
+        self.asks.remove(price);
       } else {
         self.asks.insert(price.clone(), qty.clone());
       }
