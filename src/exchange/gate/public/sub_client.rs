@@ -279,6 +279,11 @@ impl GateSubClient {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
       {
+        println!(
+          "Checking for gap({}) {:?}: U={}, u={}, local_id={}",
+          symbol, market, first_update_id, last_update_id, update_id
+        );
+
         let mut book_mut = book.borrow_mut();
 
         if first_update_id > book_mut.update_id + 1 || last_update_id < book_mut.update_id + 1 {
