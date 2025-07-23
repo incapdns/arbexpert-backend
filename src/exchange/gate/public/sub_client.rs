@@ -173,8 +173,8 @@ impl GateSubClient {
     let symbol = parsed["s"].as_str()?;
 
     if let Some(bp_symbol) = unsafe { &BREAKPOINT } {
-      if symbol.contains(bp_symbol) {
-        println!("text: {:?}", text);
+      if symbol.contains(bp_symbol) && market.eq(&MarketType::Future) {
+        println!("text: {}", text);
       }
     }
 
