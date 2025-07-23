@@ -256,8 +256,9 @@ impl WsClient {
                 }
               }
             }
+          } else { 
+            sink.send(message).await
           }
-          sink.send(message).await
         }
 
         // Our struct client tasks
