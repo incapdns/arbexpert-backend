@@ -63,7 +63,7 @@ pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(183, Duration::from_millis(10000))
+    Ratelimiter::builder(183, Duration::from_secs(10))
       .max_tokens(183)
       .initial_available(183)
       .build()
