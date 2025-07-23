@@ -1,6 +1,6 @@
 use std::{cmp::Reverse, collections::BTreeMap};
 
-use rust_decimal::{dec, Decimal};
+use rust_decimal::{Decimal, dec};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct OrderRequest {
 #[derive(Clone, Debug)]
 pub struct OrderBook {
   pub bids: BTreeMap<Reverse<Decimal>, Decimal>, // preço -> quantidade
-  pub asks: BTreeMap<Decimal, Decimal>, // preço -> quantidade
+  pub asks: BTreeMap<Decimal, Decimal>,          // preço -> quantidade
   pub update_id: u64,
 }
 
@@ -47,7 +47,7 @@ pub struct OrderBookUpdate {
   pub asks: Vec<(Decimal, Decimal)>,
   pub first_update_id: u64,
   pub last_update_id: u64,
-  pub full: bool
+  pub full: bool,
 }
 
 impl OrderBook {
@@ -65,7 +65,14 @@ impl OrderBook {
     for (price, qty) in update.bids.iter() {
       let key = Reverse(price.clone());
       if qty.eq(&zero) {
-        self.bids.remove(&key);
+        let removal_result = self.bids.remove(&key);
+
+        if removal_result.is_none() {
+          eprintln!(
+            "[DEBUG][ASKS] FALHA CRÍTICA: A remoção do preço {:?} falhou.",
+            price
+          );
+        }
       } else {
         self.bids.insert(key, qty.clone());
       }
