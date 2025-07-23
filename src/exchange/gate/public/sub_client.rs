@@ -72,6 +72,8 @@ pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
+static mut TESTING: bool = true;
+
 impl GateSubClient {
   #[allow(static_mut_refs)]
   async fn process_gate_depth(
@@ -172,16 +174,12 @@ impl GateSubClient {
     let full = parsed["full"].as_bool().unwrap_or(false);
     let symbol = parsed["s"].as_str()?;
 
-    if let Some(bp_symbol) = unsafe { &BREAKPOINT } {
-      if symbol.contains(bp_symbol) && market.eq(&MarketType::Future) {
-        println!("text: {}", text);
-      }
-    }
-
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
-    println!("U({}): {} | Market {:?}", symbol, first_update_id, market);
+    if unsafe { TESTING } {
+      println!("U({}): {} | Market {:?}", symbol, first_update_id, market);
+    }
 
     let book = {
       let borrow = shared.subscribed.borrow();
@@ -223,7 +221,10 @@ impl GateSubClient {
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       let result = book.borrow_mut().apply_update(&update);
       if !result {
-        println!("Symbol: {:?} | Market {:?}", symbol, market)
+        println!("Symbol: {:?} | Market {:?}", symbol, market);
+        unsafe {
+          TESTING = false;
+        }
       }
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
