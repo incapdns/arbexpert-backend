@@ -230,9 +230,9 @@ impl BinanceExchange {
       self.public.time_offset_ms = server_time - local_time;
       *lock = self.public.time_offset_ms;
 
-      let connect_limiter = Ratelimiter::builder(300, Duration::from_secs(300))
-        .max_tokens(300)
-        .initial_available(300)
+      let connect_limiter = Ratelimiter::builder(274, Duration::from_secs(300))
+        .max_tokens(274)
+        .initial_available(274)
         .alignment(Alignment::Minute)
         .sync_time(server_time as u64)
         .build()

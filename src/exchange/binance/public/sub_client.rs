@@ -42,9 +42,9 @@ struct DepthSnapshot {
 
 pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(300, Duration::from_secs(300))
-      .max_tokens(300)
-      .initial_available(300)
+    Ratelimiter::builder(274, Duration::from_secs(300))
+      .max_tokens(274)
+      .initial_available(274)
       .build()
       .unwrap(),
   )
@@ -352,14 +352,14 @@ impl BinanceSubClient {
 
   #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    let limiter = if symbol.contains(':') {
-      unsafe { &FUTURE_HTTP_LIMITER }
+    let (limiter, weight) = if symbol.contains(':') {
+      (unsafe { &FUTURE_HTTP_LIMITER }, 5)
     } else {
-      unsafe { &SPOT_HTTP_LIMITER }
+      (unsafe { &SPOT_HTTP_LIMITER }, 2)
     };
     
     loop {
-      match limiter.try_wait_n(5) {
+      match limiter.try_wait_n(weight) {
         Ok(()) => return self.base.watch(symbol).await,
         Err(duration) => {
           ntex::time::sleep(duration).await;
