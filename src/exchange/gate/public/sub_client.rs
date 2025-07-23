@@ -319,7 +319,7 @@ impl GateSubClient {
     let server_time = now + time_offset_ms;
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(5, Duration::from_millis(2050))
+      Ratelimiter::builder(5, Duration::from_secs(5))
         .max_tokens(5)
         .initial_available(5)
         .alignment(Alignment::Second)
