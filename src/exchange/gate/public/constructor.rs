@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures::join;
-use ratelimit::Ratelimiter;
+use ratelimit::{Alignment, Ratelimiter};
 
 use crate::{
   base::{
@@ -243,6 +243,8 @@ impl GateExchange {
       let http_limiter = Ratelimiter::builder(200, Duration::from_millis(11500))
         .max_tokens(200)
         .initial_available(200)
+        .alignment(Alignment::Second)
+        .sync_time(server_time as u64)
         .build()
         .unwrap();
 

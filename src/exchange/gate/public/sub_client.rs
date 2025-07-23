@@ -8,6 +8,7 @@ use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
 use once_cell::sync::Lazy;
+use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -301,10 +302,19 @@ impl GateSubClient {
 
     let (m1, m2) = (market_cl.clone(), market_cl);
 
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("Time went backwards")
+      .as_millis() as i64;
+
+    let server_time = now + time_offset_ms;
+
     let send_limiter = Arc::new(
       Ratelimiter::builder(5, Duration::from_millis(2050))
         .max_tokens(5)
         .initial_available(5)
+        .alignment(Alignment::Second)
+        .sync_time(server_time as u64)
         .build()
         .unwrap(),
     );

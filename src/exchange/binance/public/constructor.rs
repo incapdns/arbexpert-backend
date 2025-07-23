@@ -8,7 +8,7 @@ use std::{
 };
 
 use futures::join;
-use ratelimit::Ratelimiter;
+use ratelimit::{Alignment, Ratelimiter};
 
 use crate::{
   base::{
@@ -233,7 +233,8 @@ impl BinanceExchange {
       let connect_limiter = Ratelimiter::builder(300, Duration::from_secs(300))
         .max_tokens(300)
         .initial_available(300)
-        .sync_time(self.public.time_offset_ms as u64)
+        .alignment(Alignment::Minute)
+        .sync_time(server_time as u64)
         .build()
         .unwrap();
 
@@ -246,7 +247,8 @@ impl BinanceExchange {
       let spot_http_limiter = Ratelimiter::builder(5950, Duration::from_millis(61500))
         .max_tokens(5950)
         .initial_available(5950)
-        .sync_time(self.public.time_offset_ms as u64)
+        .alignment(Alignment::Minute)
+        .sync_time(server_time as u64)
         .build()
         .unwrap();
 
@@ -259,6 +261,8 @@ impl BinanceExchange {
       let future_http_limiter = Ratelimiter::builder(2350, Duration::from_millis(61500))
         .max_tokens(2350)
         .initial_available(2350)
+        .alignment(Alignment::Minute)
+        .sync_time(server_time as u64)
         .build()
         .unwrap();
 

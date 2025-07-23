@@ -8,6 +8,7 @@ use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
 use once_cell::sync::Lazy;
+use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -21,6 +22,8 @@ use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use std::usize;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
@@ -259,7 +262,7 @@ impl BinanceSubClient {
 
   /// Cria e conecta imediatamente
   #[allow(static_mut_refs)]
-  pub fn new(utils: Rc<BinanceExchangeUtils>, market: MarketType) -> Self {
+  pub fn new(utils: Rc<BinanceExchangeUtils>, time_offset_ms: i64, market: MarketType) -> Self {
     let ws_url = if let MarketType::Spot = market {
       "wss://stream.binance.com/ws"
     } else {
@@ -270,10 +273,19 @@ impl BinanceSubClient {
 
     let (ic1, ic2) = (init.clone(), init);
 
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("Time went backwards")
+      .as_millis() as i64;
+
+    let server_time = now + time_offset_ms;
+
     let send_limiter = Arc::new(
       Ratelimiter::builder(5, Duration::from_millis(2500))
         .max_tokens(5)
         .initial_available(5)
+        .alignment(Alignment::Second)
+        .sync_time(server_time as u64)
         .build()
         .unwrap(),
     );

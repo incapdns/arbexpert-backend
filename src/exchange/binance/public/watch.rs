@@ -41,7 +41,7 @@ impl BinanceExchange {
     // Empurra o novo client para o vetor
     let rc_new_sc = {
       let mut guard = sub_clients.borrow_mut();
-      let new_sc = BinanceSubClient::new(self.utils.clone(), market);
+      let new_sc = BinanceSubClient::new(self.utils.clone(),  self.public.time_offset_ms, market);
       let rc_new_sc = Rc::new(new_sc);
       guard.push(rc_new_sc.clone());
       rc_new_sc
