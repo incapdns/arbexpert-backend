@@ -1,3 +1,4 @@
+use crate::BREAKPOINT;
 use crate::base::exchange::assets::MarketType;
 use crate::base::exchange::order::OrderBook;
 use crate::base::exchange::order::OrderBookUpdate;
@@ -7,7 +8,6 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
-use crate::BREAKPOINT;
 use once_cell::sync::Lazy;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
@@ -181,6 +181,8 @@ impl GateSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
+    println!("U: {:?}", first_update_id);
+
     let book = {
       let borrow = shared.subscribed.borrow();
       borrow.get(symbol)?.clone()
@@ -214,12 +216,16 @@ impl GateSubClient {
         bids: parse_side(&parsed["b"])?,
         last_update_id,
         first_update_id,
-        full
+        full,
       })
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      book.borrow_mut().apply_update(&update);
+      let result = book.borrow_mut().apply_update(&update);
+      if !result {
+        println!("Symbol: {:?} | Market {:?}", symbol, market)
+      }
+
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
@@ -228,12 +234,12 @@ impl GateSubClient {
       Some(())
     };
 
-    if full {
-      broadcast_update(book, build_update()?);
-      return Some(())
-    }
-
     if update_id == 0 {
+      if full {
+        broadcast_update(book, build_update()?);
+        return Some(());
+      }
+
       book.borrow_mut().update_id = 1;
       init.borrow_mut().entry(symbol.to_string()).or_default();
 
@@ -346,8 +352,7 @@ impl GateSubClient {
             let result = Self::handle_message(&text, shared, ic1, utils, market).await;
 
             //Debug
-            if result.is_none() && !text.contains("subscribe") 
-            {
+            if result.is_none() && !text.contains("subscribe") {
               println!("Err {:?}", text)
             }
           }

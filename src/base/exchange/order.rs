@@ -1,6 +1,6 @@
 use std::{cmp::Reverse, collections::BTreeMap};
 
-use rust_decimal::{dec, Decimal};
+use rust_decimal::{Decimal, dec};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct OrderRequest {
 #[derive(Clone, Debug)]
 pub struct OrderBook {
   pub bids: BTreeMap<Reverse<Decimal>, Decimal>, // preço -> quantidade
-  pub asks: BTreeMap<Decimal, Decimal>, // preço -> quantidade
+  pub asks: BTreeMap<Decimal, Decimal>,          // preço -> quantidade
   pub update_id: u64,
 }
 
@@ -47,11 +47,11 @@ pub struct OrderBookUpdate {
   pub asks: Vec<(Decimal, Decimal)>,
   pub first_update_id: u64,
   pub last_update_id: u64,
-  pub full: bool
+  pub full: bool,
 }
 
 impl OrderBook {
-  pub fn apply_update(&mut self, update: &OrderBookUpdate) {
+  pub fn apply_update(&mut self, update: &OrderBookUpdate) -> bool {
     if update.full {
       self.asks.clear();
       self.bids.clear();
@@ -62,10 +62,12 @@ impl OrderBook {
 
     let zero = Decimal::ZERO;
 
+    let mut success = true;
+
     for (price, qty) in update.bids.iter() {
       let key = Reverse(price.clone());
       if qty.eq(&zero) {
-        self.bids.remove(&key);
+        success = success && self.bids.remove(&key).is_some();
       } else {
         self.bids.insert(key, qty.clone());
       }
@@ -73,7 +75,7 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&zero) {
-        self.asks.remove(price);
+        success = success && self.asks.remove(price).is_some();
       } else {
         self.asks.insert(price.clone(), qty.clone());
       }
@@ -86,6 +88,8 @@ impl OrderBook {
     if update.last_update_id > 0 {
       self.update_id = update.last_update_id;
     }
+
+    return success;
   }
 
   // Opcional: retorna os bids/asks como vetores ordenados
