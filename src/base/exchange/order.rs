@@ -51,7 +51,7 @@ pub struct OrderBookUpdate {
 }
 
 impl OrderBook {
-  pub fn apply_update(&mut self, update: &OrderBookUpdate) -> bool {
+  pub fn apply_update(&mut self, update: &OrderBookUpdate) {
     if update.full {
       self.asks.clear();
       self.bids.clear();
@@ -62,12 +62,10 @@ impl OrderBook {
 
     let zero = Decimal::ZERO;
 
-    let mut success = true;
-
     for (price, qty) in update.bids.iter() {
       let key = Reverse(price.clone());
       if qty.eq(&zero) {
-        success = success && self.bids.remove(&key).is_some();
+        self.bids.remove(&key).is_some();
       } else {
         self.bids.insert(key, qty.clone());
       }
@@ -75,7 +73,7 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&zero) {
-        success = success && self.asks.remove(price).is_some();
+        self.asks.remove(price).is_some();
       } else {
         self.asks.insert(price.clone(), qty.clone());
       }
@@ -88,8 +86,6 @@ impl OrderBook {
     if update.last_update_id > 0 {
       self.update_id = update.last_update_id;
     }
-
-    return success;
   }
 
   // Opcional: retorna os bids/asks como vetores ordenados

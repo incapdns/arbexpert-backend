@@ -176,10 +176,6 @@ impl GateSubClient {
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 
-    if unsafe { TESTING } {
-      println!("U({}): {} | Market {:?} | {}", symbol, first_update_id, market, text);
-    }
-
     let book = {
       let borrow = shared.subscribed.borrow();
       borrow.get(symbol)?.clone()
@@ -218,14 +214,7 @@ impl GateSubClient {
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      let result = book.borrow_mut().apply_update(&update);
-      if !result && unsafe { TESTING } {
-        println!("Symbol: {:?} | Market {:?}", symbol, market);
-        unsafe {
-          TESTING = false;
-        }
-      }
-
+      book.borrow_mut().apply_update(&update);
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
@@ -277,8 +266,6 @@ impl GateSubClient {
 
         break pending;
       };
-
-      println!("T({}): Market {:?} | Snapshot: {:?}", symbol, market, snapshot);
 
       let mut book_bm = book.borrow_mut();
       book_bm.asks = snapshot.asks;
@@ -351,12 +338,7 @@ impl GateSubClient {
           let utils = utils.clone();
           let market = market.clone();
           async move {
-            let result = Self::handle_message(&text, shared, ic1, utils, market).await;
-
-            //Debug
-            if result.is_none() && !text.contains("subscribe") {
-              println!("Err {:?}", text)
-            }
+            Self::handle_message(&text, shared, ic1, utils, market).await;
           }
         },
         move |_, _| async {},
