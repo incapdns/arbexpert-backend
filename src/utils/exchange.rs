@@ -10,7 +10,7 @@ use crate::{
 pub async fn setup_exchanges() -> Vec<Box<dyn Exchange>> {
   let (gate, binance) = join!(GateExchange::new(), BinanceExchange::new());
 
-  vec![Box::new(gate)]
+  vec![Box::new(gate), Box::new(binance)]
 }
 
 pub fn get_price<'a, K, V>(side: &'a BTreeMap<K, V>, default: &'a K) -> &'a K {
