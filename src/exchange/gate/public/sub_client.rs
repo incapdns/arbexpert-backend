@@ -204,6 +204,7 @@ impl GateSubClient {
         bids: parse_side(&parsed["b"])?,
         last_update_id,
         first_update_id,
+        full: parsed["full"].as_bool().unwrap_or(false)
       })
     };
 

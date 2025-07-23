@@ -65,6 +65,7 @@ impl SubClient {
                 )
               })
               .collect::<Vec<(Decimal, Decimal)>>(),
+            full: false
           };
 
           book.apply_update(&update);

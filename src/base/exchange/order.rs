@@ -47,10 +47,16 @@ pub struct OrderBookUpdate {
   pub asks: Vec<(Decimal, Decimal)>,
   pub first_update_id: u64,
   pub last_update_id: u64,
+  pub full: bool
 }
 
 impl OrderBook {
   pub fn apply_update(&mut self, update: &OrderBookUpdate) {
+    if update.full {
+      self.asks.clear();
+      self.bids.clear();
+    }
+
     let bids_len = update.bids.len();
     let asks_len = update.asks.len();
 

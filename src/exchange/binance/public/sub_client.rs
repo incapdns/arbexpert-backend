@@ -164,6 +164,7 @@ impl BinanceSubClient {
         bids: parse_side(&parsed["b"])?,
         last_update_id,
         first_update_id,
+        full: false
       })
     };
 
