@@ -244,7 +244,7 @@ impl BinanceExchange {
         *connect_limit_ptr = connect_limiter;
       }
 
-      let spot_http_limiter = Ratelimiter::builder(5499, Duration::from_secs(1))
+      let spot_http_limiter = Ratelimiter::builder(5499, Duration::from_secs(60))
         .max_tokens(5499)
         .initial_available(5499)
         .alignment(Alignment::Minute)
@@ -258,7 +258,7 @@ impl BinanceExchange {
         *spot_limit_ptr = spot_http_limiter;
       }
 
-      let future_http_limiter = Ratelimiter::builder(2199, Duration::from_secs(1))
+      let future_http_limiter = Ratelimiter::builder(2199, Duration::from_secs(60))
         .max_tokens(2199)
         .initial_available(2199)
         .alignment(Alignment::Minute)
