@@ -347,6 +347,8 @@ impl GateSubClient {
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
         unsafe { CONNECT_LIMITER.clone() },
         send_limiter,
+        unsafe { HTTP_LIMITER.clone() },
+        1
       ),
     }
   }
@@ -419,14 +421,7 @@ impl GateSubClient {
 
   #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    loop {
-      match unsafe { &HTTP_LIMITER }.try_wait() {
-        Ok(()) => return self.base.watch(symbol).await,
-        Err(duration) => {
-          ntex::time::sleep(duration).await;
-        }
-      }
-    }
+    self.base.watch(symbol).await
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {

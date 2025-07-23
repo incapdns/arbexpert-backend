@@ -10,9 +10,9 @@ use std::mem;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 pub type SharedBook = Rc<RefCell<OrderBook>>;
 
@@ -29,7 +29,9 @@ pub struct SubClient {
   unsubscribe: Box<dyn Fn(String) -> DynString>,
   connecting_id: AtomicU32,
   connecting: Rc<RefCell<Vec<oneshot::Sender<Result<(), Box<dyn Error>>>>>>,
-  connect_limiter: Arc<Ratelimiter>
+  connect_limiter: Arc<Ratelimiter>,
+  http_limiter: Arc<Ratelimiter>,
+  http_weight: u64,
 }
 
 #[derive(Clone)]
@@ -49,6 +51,8 @@ impl SubClient {
     unsubscribe: impl Fn(String) -> UnsubscribeRet + 'static,
     connect_limiter: Arc<Ratelimiter>,
     send_limiter: Arc<Ratelimiter>,
+    http_limiter: Arc<Ratelimiter>,
+    http_weight: u64,
   ) -> Self
   where
     MessageRet: Future<Output = ()> + 'static,
@@ -121,7 +125,9 @@ impl SubClient {
       unsubscribe: unsubscribe_pin,
       connecting_id: AtomicU32::new(u32::MAX),
       connecting,
-      connect_limiter
+      connect_limiter,
+      http_limiter,
+      http_weight,
     }
   }
 
@@ -144,7 +150,7 @@ impl SubClient {
   /// Pega o _próximo_ OrderBook para `symbol`. Se for a primeira chamada, envia SUBSCRIBE.
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     let mut connecting_id = 0;
-    while self.connecting_id.load(Ordering::Relaxed) != connecting_id  {
+    while self.connecting_id.load(Ordering::Relaxed) != connecting_id {
       connecting_id = self.connect().await?;
     }
 
@@ -212,6 +218,14 @@ impl SubClient {
     return Ok(());
   }
 
+  pub fn need_connect(&self) -> bool {
+    let ws_b = self.ws.try_borrow();
+    if let Ok(ws) = ws_b {
+      return !ws.is_connected();
+    }
+    return false;
+  }
+
   async fn connect(&self) -> Result<u32, Box<dyn Error>> {
     let mut connecting = None;
 
@@ -233,14 +247,21 @@ impl SubClient {
         connecting_id = self.connecting_id.fetch_add(1, Ordering::Relaxed) + 1;
 
         let (result, senders) = loop {
-          match self.connect_limiter.try_wait() {
-            Ok(()) => {
-              let result = ws.connect().await;
-              break (result, {
-                let mut connecting_bm = self.connecting.borrow_mut();
-                mem::take(connecting_bm.deref_mut())
-              });
-            }
+          match self.http_limiter.try_wait_n(self.http_weight) {
+            Ok(()) => break loop {
+              match self.connect_limiter.try_wait() {
+                Ok(()) => {
+                  let result = ws.connect().await;
+                  break (result, {
+                    let mut connecting_bm = self.connecting.borrow_mut();
+                    mem::take(connecting_bm.deref_mut())
+                  });
+                }
+                Err(duration) => {
+                  ntex::time::sleep(duration).await;
+                }
+              }
+            },
             Err(duration) => {
               ntex::time::sleep(duration).await;
             }

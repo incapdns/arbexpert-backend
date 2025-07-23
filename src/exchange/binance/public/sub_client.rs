@@ -291,6 +291,12 @@ impl BinanceSubClient {
         .unwrap(),
     );
 
+    let (http_limiter, http_weight) = if market.eq(&MarketType::Future) {
+      (unsafe { FUTURE_HTTP_LIMITER.clone() }, 5)
+    } else {
+      (unsafe { SPOT_HTTP_LIMITER.clone() }, 2)
+    };
+
     BinanceSubClient {
       base: SubClient::new(
         ws_url,
@@ -310,6 +316,8 @@ impl BinanceSubClient {
         Self::unsubscribe,
         unsafe { CONNECT_LIMITER.clone() },
         send_limiter,
+        http_limiter,
+        http_weight
       ),
     }
   }
@@ -352,20 +360,7 @@ impl BinanceSubClient {
 
   #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    let (limiter, weight) = if symbol.contains(':') {
-      (unsafe { &FUTURE_HTTP_LIMITER }, 5)
-    } else {
-      (unsafe { &SPOT_HTTP_LIMITER }, 2)
-    };
-    
-    loop {
-      match limiter.try_wait_n(weight) {
-        Ok(()) => return self.base.watch(symbol).await,
-        Err(duration) => {
-          ntex::time::sleep(duration).await;
-        }
-      }
-    }
+    self.base.watch(symbol).await
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
