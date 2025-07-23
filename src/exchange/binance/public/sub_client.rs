@@ -187,7 +187,7 @@ impl BinanceSubClient {
 
       if snapshot.is_err() {
         book.borrow_mut().update_id = 0;
-        return None;
+        return Some(());
       }
 
       let snapshot = snapshot.ok()?;
@@ -233,7 +233,7 @@ impl BinanceSubClient {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
-          return None;
+          return Some(());
         }
       }
 
@@ -247,7 +247,7 @@ impl BinanceSubClient {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
-          return None;
+          return Some(());
         }
       }
 
