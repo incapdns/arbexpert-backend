@@ -166,8 +166,8 @@ impl GateSubClient {
     market: MarketType,
   ) -> Option<()> {
     let parsed: Value = serde_json::from_str(text).ok()?;
-    let full = parsed["full"].as_bool().unwrap_or(false);
     let parsed = &parsed["result"];
+    let full = parsed["full"].as_bool().unwrap_or(false);
     let symbol = parsed["s"].as_str()?;
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
@@ -218,6 +218,11 @@ impl GateSubClient {
 
       Some(())
     };
+
+    if full {
+      broadcast_update(book, build_update()?);
+      return Some(())
+    }
 
     if update_id == 0 {
       book.borrow_mut().update_id = 1;
