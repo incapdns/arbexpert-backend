@@ -274,7 +274,7 @@ impl GateSubClient {
         book_bm.apply_update(&update);
       }
 
-      println!("Book(): {} {:?}", symbol, book_bm);
+      println!("Book({:?}): {} {:?}", market, symbol, book_bm);
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
@@ -285,7 +285,7 @@ impl GateSubClient {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
-          println!("Reseted(): {}", symbol);
+          println!("Reseted({:?}): {}", market, symbol);
           return Some(());
         }
       }
