@@ -279,6 +279,8 @@ impl GateSubClient {
         break pending;
       };
 
+      println!("T({}): Market {:?} | Snapshot: {:?}", symbol, market, snapshot);
+
       let mut book_bm = book.borrow_mut();
       book_bm.asks = snapshot.asks;
       book_bm.bids = snapshot.bids;
