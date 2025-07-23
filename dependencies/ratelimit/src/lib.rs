@@ -82,6 +82,8 @@ pub struct Parameters {
   pub capacity: u64,
   pub refill_amount: u64,
   pub refill_interval: Duration,
+  pub alignment: Alignment,
+  pub start_instant: Instant,
 }
 
 pub struct Ratelimiter {
@@ -90,8 +92,6 @@ pub struct Ratelimiter {
   parameters: RwLock<Parameters>,
   /// Nanoseconds from `start_instant` to the last refill tick.
   last_tick: AtomicU64,
-  /// The monotonic-time epoch for this ratelimiter, aligned at creation.
-  start_instant: Instant,
 }
 
 impl Ratelimiter {
@@ -160,8 +160,8 @@ impl Ratelimiter {
   /// decrease as they are used, and subsequent refills will be capped at the
   /// new, lower capacity.
   ///
-  /// It only adjusts the available quantity if the parameter is greater than the
-  /// currently available quantity, if this happens, it will calculate and set the equivalent
+  /// If the new capacity is greater than the old one, the difference is 
+  /// added to the currently available tokens
   pub fn set_max_tokens(&self, amount: u64) -> Result<(), Error> {
     let mut parameters = self.parameters.write();
     if amount < parameters.refill_amount {
@@ -225,7 +225,7 @@ impl Ratelimiter {
 
     let next_refill_nanos_from_start = last_tick_nanos + interval_nanos;
 
-    self.start_instant + Duration::from_nanos(next_refill_nanos_from_start)
+    parameters.start_instant + Duration::from_nanos(next_refill_nanos_from_start)
   }
 
   /// Returns the number of tokens that have been dropped due to bucket
@@ -246,7 +246,7 @@ impl Ratelimiter {
     }
 
     let last = self.last_tick.load(Ordering::Relaxed);
-    let now_nanos = self.start_instant.elapsed().as_nanos() as u64;
+    let now_nanos = parameters.start_instant.elapsed().as_nanos() as u64;
 
     let ticks_passed = now_nanos.saturating_sub(last) / interval_nanos;
 
@@ -331,6 +331,85 @@ impl Ratelimiter {
   pub fn try_wait(&self) -> Result<(), std::time::Duration> {
     self.try_wait_n(1)
   }
+
+  /// Resynchronizes the ratelimiter clock with an external server timestamp.
+  ///
+  /// This recalculates the time window phase to align with the server time,
+  /// using the currently configured `Alignment` type.
+  /// This is crucial to avoid clock drift.
+  ///
+  /// # Arguments
+  /// * `server_ms_since_epoch` - The current server time in milliseconds since the UNIX Epoch.
+  pub fn sync_time(&self, server_ms_since_epoch: u64) {
+    let mut params = self.parameters.write();
+
+    let in_now = Instant::now();
+    let since_unix_epoch = Duration::from_millis(server_ms_since_epoch);
+
+    let time_since_window_start_ns = match params.alignment {
+      Alignment::Minute => since_unix_epoch.as_nanos() % Duration::from_secs(60).as_nanos(),
+      Alignment::Second => since_unix_epoch.as_nanos() % Duration::from_secs(1).as_nanos(),
+      Alignment::Interval => {
+        let interval_ns = params.refill_interval.as_nanos();
+        if interval_ns == 0 {
+          0
+        } else {
+          since_unix_epoch.as_nanos() % interval_ns
+        }
+      }
+    };
+
+    let time_since_window_start = Duration::from_nanos(time_since_window_start_ns as u64);
+
+    // Update start_instant and last_tick to reflect the new timing
+    params.start_instant = in_now - time_since_window_start;
+    self
+      .last_tick
+      .store(time_since_window_start.as_nanos() as u64, Ordering::Relaxed);
+  }
+
+  /// Changes the ratelimiter's window alignment type at runtime.
+  ///
+  /// WARNING: This is a destructive operation for the current window count.
+  /// The time window is immediately recalculated and reset based on the new
+  /// alignment and the local system clock.
+  ///
+  /// To align with an external clock, call `sync_time()` after `set_alignment()`.
+  ///
+  /// # Arguments
+  /// * `new_alignment` - The new `Alignment` to use (Minute, Second, or Interval).
+  pub fn set_alignment(&self, new_alignment: Alignment) {
+    let mut params = self.parameters.write();
+    params.alignment = new_alignment;
+
+    // Since the alignment change invalidates the current window phase,
+    // we need to resynchronize. We use the local clock as a base.
+    let in_now = Instant::now();
+    let since_unix_epoch = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("SystemTime before UNIX EPOCH");
+
+    let time_since_window_start_ns = match params.alignment {
+      Alignment::Minute => since_unix_epoch.as_nanos() % Duration::from_secs(60).as_nanos(),
+      Alignment::Second => since_unix_epoch.as_nanos() % Duration::from_secs(1).as_nanos(),
+      Alignment::Interval => {
+        let interval_ns = params.refill_interval.as_nanos();
+        if interval_ns == 0 {
+          0
+        } else {
+          since_unix_epoch.as_nanos() % interval_ns
+        }
+      }
+    };
+
+    let time_since_window_start = Duration::from_nanos(time_since_window_start_ns as u64);
+
+    // Update start_instant and last_tick to reflect the new alignment
+    params.start_instant = in_now - time_since_window_start;
+    self
+      .last_tick
+      .store(time_since_window_start.as_nanos() as u64, Ordering::Relaxed);
+  }
 }
 
 pub struct Builder {
@@ -396,12 +475,6 @@ impl Builder {
       return Err(Error::AvailableTokensTooHigh);
     }
 
-    let parameters = Parameters {
-      capacity: self.max_tokens,
-      refill_amount: self.refill_amount,
-      refill_interval: self.refill_interval,
-    };
-
     // --- Hybrid Alignment Logic ---
 
     // 1. Capture local monotonic time and determine the wall-clock time source.
@@ -452,11 +525,18 @@ impl Builder {
     // The last tick is the duration from our new epoch to the actual start of the first tick.
     let last_tick_nanos = time_since_window_start.as_nanos() as u64;
 
+    let parameters = Parameters {
+      capacity: self.max_tokens,
+      refill_amount: self.refill_amount,
+      refill_interval: self.refill_interval,
+      alignment: self.alignment,
+      start_instant: monotonic_start,
+    };
+
     Ok(Ratelimiter {
       available: AtomicU64::new(self.initial_available),
       dropped: AtomicU64::new(0),
       parameters: parameters.into(),
-      start_instant: monotonic_start,
       last_tick: AtomicU64::new(last_tick_nanos),
     })
   }

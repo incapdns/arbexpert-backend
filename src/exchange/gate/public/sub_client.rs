@@ -63,9 +63,9 @@ pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(200, Duration::from_millis(11500))
-      .max_tokens(200)
-      .initial_available(200)
+    Ratelimiter::builder(183, Duration::from_millis(10000))
+      .max_tokens(183)
+      .initial_available(183)
       .build()
       .unwrap(),
   )
@@ -228,7 +228,7 @@ impl GateSubClient {
 
       if snapshot.is_err() {
         book.borrow_mut().update_id = 0;
-        return None;
+        return Some(());
       }
 
       let snapshot = snapshot.ok()?;
@@ -274,7 +274,7 @@ impl GateSubClient {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
-          return None;
+          return Some(());
         }
       }
 
@@ -329,7 +329,13 @@ impl GateSubClient {
           let utils = utils.clone();
           let market = market.clone();
           async move {
-            Self::handle_message(&text, shared, ic1, utils, market).await;
+            let result = Self::handle_message(&text, shared, ic1, utils, market).await;
+
+            /**Debug */
+            if result.is_none() && !text.contains("subscribe") 
+            {
+              println!("Err {:?}", text)
+            }
           }
         },
         move |_, _| async {},

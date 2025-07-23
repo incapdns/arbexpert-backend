@@ -52,9 +52,9 @@ pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static mut SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(5950, Duration::from_millis(61500))
-      .max_tokens(5950)
-      .initial_available(5950)
+    Ratelimiter::builder(5499, Duration::from_millis(60000))
+      .max_tokens(5499)
+      .initial_available(5499)
       .build()
       .unwrap(),
   )
@@ -62,9 +62,9 @@ pub static mut SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
 
 pub static mut FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   Arc::new(
-    Ratelimiter::builder(2350, Duration::from_millis(61500))
-      .max_tokens(2350)
-      .initial_available(2350)
+    Ratelimiter::builder(2199, Duration::from_millis(60000))
+      .max_tokens(2199)
+      .initial_available(2199)
       .build()
       .unwrap(),
   )
