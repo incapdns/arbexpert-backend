@@ -7,6 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
+use crate::BREAKPOINT;
 use once_cell::sync::Lazy;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
@@ -158,6 +159,7 @@ impl GateSubClient {
     Ok(processed)
   }
 
+  #[allow(static_mut_refs)]
   pub async fn handle_message(
     text: &str,
     shared: Shared,
@@ -169,6 +171,13 @@ impl GateSubClient {
     let parsed = &parsed["result"];
     let full = parsed["full"].as_bool().unwrap_or(false);
     let symbol = parsed["s"].as_str()?;
+
+    if let Some(bp_symbol) = unsafe { &BREAKPOINT } {
+      if symbol.contains(bp_symbol) {
+        println!("text: {:?}", text);
+      }
+    }
+
     let last_update_id = parsed["u"].as_u64()?;
     let first_update_id = parsed["U"].as_u64()?;
 

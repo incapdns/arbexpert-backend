@@ -60,9 +60,11 @@ impl OrderBook {
     let bids_len = update.bids.len();
     let asks_len = update.asks.len();
 
+    let zero = Decimal::ZERO;
+
     for (price, qty) in update.bids.iter() {
       let key = Reverse(price.clone());
-      if qty.eq(&dec!(0)) {
+      if qty.eq(&zero) {
         self.bids.remove(&key);
       } else {
         self.bids.insert(key, qty.clone());
@@ -70,7 +72,7 @@ impl OrderBook {
     }
 
     for (price, qty) in update.asks.iter() {
-      if qty.eq(&dec!(0)) {
+      if qty.eq(&zero) {
         self.asks.remove(price);
       } else {
         self.asks.insert(price.clone(), qty.clone());

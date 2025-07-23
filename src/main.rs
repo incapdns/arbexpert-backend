@@ -49,6 +49,21 @@ pub mod test;
 pub mod utils;
 pub mod worker;
 
+static mut BREAKPOINT: Option<String> = None;
+
+#[allow(static_mut_refs)]
+#[web::post("/breakpoint/{symbol}")]
+async fn breakpoint(
+  _: HttpRequest,
+  symbol: web::types::Path<String>,
+) -> HttpResponse {
+  unsafe {
+    BREAKPOINT.replace(symbol.to_string());
+  }
+  
+  HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
+}
+
 #[web::post("/arbitrage/{symbol}/start")]
 async fn start_arbitrage(
   _: HttpRequest,
@@ -510,6 +525,7 @@ async fn main() -> std::io::Result<()> {
             list_arbitrage,
             monitor_futures_orderbook,
             monitor_spot_orderbook,
+            breakpoint
           ))
           .service(
             web::resource("/resource2/index.html")
