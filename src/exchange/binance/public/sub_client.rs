@@ -164,7 +164,7 @@ impl BinanceSubClient {
         bids: parse_side(&parsed["b"])?,
         last_update_id,
         first_update_id,
-        full: false
+        full: false,
       })
     };
 
@@ -282,9 +282,9 @@ impl BinanceSubClient {
     let server_time = now + time_offset_ms;
 
     let send_limiter = Arc::new(
-      Ratelimiter::builder(2, Duration::from_secs(1))
-        .max_tokens(2)
-        .initial_available(2)
+      Ratelimiter::builder(3, Duration::from_secs(1))
+        .max_tokens(3)
+        .initial_available(3)
         .alignment(Alignment::Second)
         .sync_time(server_time as u64)
         .build()
@@ -350,8 +350,22 @@ impl BinanceSubClient {
     Ok(msg)
   }
 
+  #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    self.base.watch(symbol).await
+    let limiter = if symbol.contains(':') {
+      unsafe { &FUTURE_HTTP_LIMITER }
+    } else {
+      unsafe { &SPOT_HTTP_LIMITER }
+    };
+    
+    loop {
+      match limiter.try_wait_n(5) {
+        Ok(()) => return self.base.watch(symbol).await,
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    }
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {

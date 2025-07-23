@@ -419,8 +419,16 @@ impl GateSubClient {
     Ok(msg)
   }
 
+  #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
-    self.base.watch(symbol).await
+    loop {
+      match unsafe { &HTTP_LIMITER }.try_wait_n(1) {
+        Ok(()) => return self.base.watch(symbol).await,
+        Err(duration) => {
+          ntex::time::sleep(duration).await;
+        }
+      }
+    }
   }
 
   pub async fn unwatch(&self, symbol: &str) -> Result<(), Box<dyn Error>> {
