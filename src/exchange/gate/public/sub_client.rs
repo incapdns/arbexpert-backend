@@ -384,7 +384,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "subscribe",
-      "payload": [symbol, "100ms", "100"]
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
@@ -412,7 +412,7 @@ impl GateSubClient {
       "time": timestamp,
       "channel": channel,
       "event": "unsubscribe",
-      "payload": [symbol, "100ms", "100"]
+      "payload": [symbol, "100ms"]
     })
     .to_string();
 
