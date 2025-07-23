@@ -69,7 +69,7 @@ impl OrderBook {
 
         if removal_result.is_none() {
           eprintln!(
-            "[DEBUG][ASKS] FALHA CRÍTICA: A remoção do preço {:?} falhou.",
+            "[DEBUG][BIDS] FALHA CRÍTICA: A remoção do preço {:?} falhou.",
             price
           );
         }
@@ -80,7 +80,14 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&zero) {
-        self.asks.remove(price);
+        let removal_result = self.asks.remove(price);
+
+        if removal_result.is_none() {
+          eprintln!(
+            "[DEBUG][ASKS] FALHA CRÍTICA: A remoção do preço {:?} falhou.",
+            price
+          );
+        }
       } else {
         self.asks.insert(price.clone(), qty.clone());
       }
