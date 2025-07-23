@@ -331,7 +331,7 @@ impl GateSubClient {
           async move {
             let result = Self::handle_message(&text, shared, ic1, utils, market).await;
 
-            /**Debug */
+            //Debug
             if result.is_none() && !text.contains("subscribe") 
             {
               println!("Err {:?}", text)
