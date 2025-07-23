@@ -181,8 +181,6 @@ impl GateSubClient {
 
     let update_id = { book.borrow().update_id };
 
-    println!("Debug: {text}");
-
     let build_update = || -> Option<OrderBookUpdate> {
       let parse_side = |side: &Value| {
         side
@@ -273,8 +271,6 @@ impl GateSubClient {
       for update in processed {
         book_bm.apply_update(&update);
       }
-
-      println!("Book(): {} {:?}", symbol, book_bm);
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
