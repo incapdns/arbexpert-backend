@@ -24,7 +24,7 @@ pub struct OrderRequest {
   pub price: Decimal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OrderBook {
   pub bids: BTreeMap<Reverse<Decimal>, Decimal>, // preço -> quantidade
   pub asks: BTreeMap<Decimal, Decimal>,          // preço -> quantidade

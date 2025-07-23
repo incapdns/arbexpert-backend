@@ -1,5 +1,5 @@
 use crate::{
-  base::exchange::assets::{Asset, MarketType},
+  base::exchange::{assets::{Asset, MarketType}, order::OrderBook},
   exchange::{gate::GateExchange, mexc::MexcExchange},
   utils::exchange::setup_exchanges,
   worker::{
@@ -170,6 +170,8 @@ pub struct ArbitrageSnaphot {
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal,
+  pub spot_ob: OrderBook,
+  pub future_ob: OrderBook
 }
 
 impl Default for ArbitrageSnaphot {
@@ -183,6 +185,8 @@ impl Default for ArbitrageSnaphot {
       future_bid: dec!(0),
       entry_percent: dec!(0),
       exit_percent: dec!(0),
+      spot_ob: OrderBook::default(),
+      future_ob: OrderBook::default()
     }
   }
 }
@@ -294,6 +298,8 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_bid: dec!(0),
             future_ask: dec!(0),
             future_bid: dec!(0),
+            spot_ob: OrderBook::default(),
+            future_ob: OrderBook::default()
           }),
         }));
       }
