@@ -71,8 +71,6 @@ pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
   )
 });
 
-static mut TESTING: bool = true;
-
 impl GateSubClient {
   #[allow(static_mut_refs)]
   async fn process_gate_depth(
