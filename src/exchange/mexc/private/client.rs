@@ -5,7 +5,7 @@ use ntex::channel::mpsc::Sender;
 use std::{
   cell::RefCell,
   collections::HashMap,
-  rc::{Rc, Weak},
+  rc::Rc,
 };
 
 pub(super) struct Client {

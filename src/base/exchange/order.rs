@@ -1,6 +1,6 @@
 use std::{cmp::Reverse, collections::BTreeMap};
 
-use rust_decimal::{Decimal, dec};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
