@@ -461,7 +461,7 @@ async fn main() -> std::io::Result<()> {
 
   let (mut ws_tx, mut ws_rx) = async_broadcast::broadcast(1000000);
 
-  ntex::rt::spawn(async move {
+  rt::spawn(async move {
     loop {
       let _ = ws_rx.recv_direct().await;
     }
