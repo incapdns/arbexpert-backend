@@ -53,21 +53,26 @@ impl BinanceExchange {
     "Binance".to_string()
   }
 
-  #[allow(static_mut_refs)]
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
-    let limiter;
+    let limiter_weight;
     let url = if let MarketType::Spot = market {
-      limiter = (20, unsafe { &SPOT_HTTP_LIMITER });
+      limiter_weight = (20, &SPOT_HTTP_LIMITER);
       "https://api.binance.com/api/v3/exchangeInfo"
     } else {
-      limiter = (1, unsafe { &FUTURE_HTTP_LIMITER });
+      limiter_weight = (1, &FUTURE_HTTP_LIMITER);
       "https://fapi.binance.com/fapi/v1/exchangeInfo"
     };
 
+    let (weight, limiter) = limiter_weight;
+
+    let limiter = limiter
+      .get()
+      .expect("Limiter not initialized");
+
     let response = loop {
-      match limiter.1.try_wait_n(limiter.0) {
+      match limiter.try_wait_n(weight) {
         Ok(()) => {
           break self
             .utils
@@ -179,7 +184,6 @@ impl BinanceExchange {
     Ok(self.public.assets.clone().unwrap())
   }
 
-  #[allow(static_mut_refs)]
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {
     let _lock = SYNC_TIME.lock();
     let mut lock = TIME_OFFSET_MS.lock().unwrap();
@@ -191,29 +195,20 @@ impl BinanceExchange {
     let url = "https://api.binance.com/api/v3/time";
     let headers: HashMap<String, String> = HashMap::new();
 
-    let response = loop {
-      match unsafe { &SPOT_HTTP_LIMITER }.try_wait() {
-        Ok(()) => {
-          break self
-            .utils
-            .http_client
-            .request(
-              "GET".to_string(),
-              url.to_string(),
-              from_headers!(headers),
-              None,
-            ) // ajuste conforme seu client
-            .await
-            .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
-            .body()
-            .await
-            .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
-        }
-        Err(duration) => {
-          ntex::time::sleep(duration).await;
-        }
-      }
-    };
+    let response = self
+      .utils
+      .http_client
+      .request(
+        "GET".to_string(),
+        url.to_string(),
+        from_headers!(headers),
+        None,
+      ) // ajuste conforme seu client
+      .await
+      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+      .body()
+      .await
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
 
     let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
@@ -238,25 +233,17 @@ impl BinanceExchange {
         .build()
         .unwrap();
 
-      unsafe {
-        let arc_mut = &mut *CONNECT_LIMITER;
-        let connect_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *connect_limit_ptr = connect_limiter;
-      }
+      let _ = CONNECT_LIMITER.set(Arc::new(connect_limiter));
 
       let spot_http_limiter = Ratelimiter::builder(5499, Duration::from_secs(60))
         .max_tokens(5499)
-        .initial_available(5499)
+        .initial_available(5499 - 1)
         .alignment(Alignment::Minute)
         .sync_time(server_time as u64)
         .build()
         .unwrap();
 
-      unsafe {
-        let arc_mut = &mut *SPOT_HTTP_LIMITER;
-        let spot_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *spot_limit_ptr = spot_http_limiter;
-      }
+      let _ = SPOT_HTTP_LIMITER.set(Arc::new(spot_http_limiter));
 
       let future_http_limiter = Ratelimiter::builder(2199, Duration::from_secs(60))
         .max_tokens(2199)
@@ -266,11 +253,7 @@ impl BinanceExchange {
         .build()
         .unwrap();
 
-      unsafe {
-        let arc_mut = &mut *FUTURE_HTTP_LIMITER;
-        let future_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *future_limit_ptr = future_http_limiter;
-      }
+      let _ = FUTURE_HTTP_LIMITER.set(Arc::new(future_http_limiter));
 
       Ok(())
     } else {

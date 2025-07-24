@@ -7,7 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::binance::BinanceExchangeUtils;
 use crate::from_headers;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
@@ -40,38 +40,13 @@ struct DepthSnapshot {
   asks: Vec<(Decimal, Decimal)>,
 }
 
-pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(274, Duration::from_secs(300))
-      .max_tokens(274)
-      .initial_available(274)
-      .build()
-      .unwrap(),
-  )
-});
+pub static CONNECT_LIMITER: OnceCell<Arc<Ratelimiter>> = OnceCell::new();
 
-pub static mut SPOT_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(5499, Duration::from_secs(60))
-      .max_tokens(5499)
-      .initial_available(5499)
-      .build()
-      .unwrap(),
-  )
-});
+pub static SPOT_HTTP_LIMITER: OnceCell<Arc<Ratelimiter>> = OnceCell::new();
 
-pub static mut FUTURE_HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(2199, Duration::from_secs(60))
-      .max_tokens(2199)
-      .initial_available(2199)
-      .build()
-      .unwrap(),
-  )
-});
+pub static FUTURE_HTTP_LIMITER: OnceCell<Arc<Ratelimiter>> = OnceCell::new();
 
 impl BinanceSubClient {
-  #[allow(static_mut_refs)]
   async fn process_binance_depth(
     symbol: &str,
     utils: Rc<BinanceExchangeUtils>,
@@ -87,12 +62,14 @@ impl BinanceSubClient {
     while snapshot.last_update_id < initial_event_u {
       let limiter;
       let uri = if let MarketType::Spot = market {
-        limiter = unsafe { &SPOT_HTTP_LIMITER };
+        limiter = &SPOT_HTTP_LIMITER;
         format!("https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100")
       } else {
-        limiter = unsafe { &FUTURE_HTTP_LIMITER };
+        limiter = &FUTURE_HTTP_LIMITER;
         format!("https://fapi.binance.com/fapi/v1/depth?symbol={symbol}&limit=100")
       };
+
+      let limiter = limiter.get().expect("Limiter not initialized");
 
       let headers = from_headers!([("Accept", "application/json")]);
 
@@ -262,7 +239,6 @@ impl BinanceSubClient {
   }
 
   /// Cria e conecta imediatamente
-  #[allow(static_mut_refs)]
   pub fn new(utils: Rc<BinanceExchangeUtils>, time_offset_ms: i64, market: MarketType) -> Self {
     let ws_url = if let MarketType::Spot = market {
       "wss://stream.binance.com/ws"
@@ -292,10 +268,15 @@ impl BinanceSubClient {
     );
 
     let (http_limiter, http_weight) = if market.eq(&MarketType::Future) {
-      (unsafe { FUTURE_HTTP_LIMITER.clone() }, 5)
+      (&FUTURE_HTTP_LIMITER, 5)
     } else {
-      (unsafe { SPOT_HTTP_LIMITER.clone() }, 2)
+      (&SPOT_HTTP_LIMITER, 2)
     };
+
+    let http_limiter = http_limiter
+      .get()
+      .cloned()
+      .expect("Limiter not initialized");    
 
     BinanceSubClient {
       base: SubClient::new(
@@ -314,7 +295,10 @@ impl BinanceSubClient {
         },
         Self::subscribe,
         Self::unsubscribe,
-        unsafe { CONNECT_LIMITER.clone() },
+        CONNECT_LIMITER
+          .get()
+          .cloned()
+          .expect("Limiter not initialized"),
         send_limiter,
         http_limiter,
         http_weight
@@ -358,7 +342,6 @@ impl BinanceSubClient {
     Ok(msg)
   }
 
-  #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     self.base.watch(symbol).await
   }

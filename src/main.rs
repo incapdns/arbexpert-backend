@@ -51,17 +51,17 @@ pub mod test;
 pub mod utils;
 pub mod worker;
 
-static mut BREAKPOINT: Option<String> = None;
+// static mut BREAKPOINT: Option<String> = None;
 
-#[allow(static_mut_refs)]
-#[web::post("/breakpoint/{symbol}")]
-async fn breakpoint(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
-  unsafe {
-    BREAKPOINT.replace(symbol.to_string());
-  }
+// #[allow(static_mut_refs)]
+// #[web::post("/breakpoint/{symbol}")]
+// async fn breakpoint(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
+//   unsafe {
+//     BREAKPOINT.replace(symbol.to_string());
+//   }
 
-  HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
-}
+//   HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
+// }
 
 #[web::post("/arbitrage/{symbol}/start")]
 async fn start_arbitrage(
@@ -283,16 +283,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         vec_mut.push(Arc::new(Arbitrage {
           spot: (*spot).clone(),
           future: (*future).clone(),
-          snapshot: ArcSwap::new(Arc::new(ArbitrageSnaphot {
-            base: spot.base.to_string(),
-            quote: spot.quote.to_string(),
-            entry_percent: dec!(0),
-            exit_percent: dec!(0),
-            spot_ask: dec!(0),
-            spot_bid: dec!(0),
-            future_ask: dec!(0),
-            future_bid: dec!(0),
-          })),
+          snapshot: ArcSwap::new(Arc::new(ArbitrageSnaphot::default())),
         }));
       }
     }
@@ -490,7 +481,7 @@ async fn main() -> std::io::Result<()> {
 
   let worker_global_state = global_state.clone();
 
-  //test::simulate_websocket_with_network_jitter_test().await;
+  test::test();
 
   Server::build()
     .workers(num_cpus::get())
@@ -524,7 +515,7 @@ async fn main() -> std::io::Result<()> {
             list_arbitrage,
             monitor_futures_orderbook,
             monitor_spot_orderbook,
-            breakpoint,
+            //breakpoint,
           ))
           .service(
             web::resource("/resource2/index.html")

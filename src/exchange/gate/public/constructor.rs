@@ -18,7 +18,7 @@ use crate::{
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
   exchange::gate::{
-    GateExchange, GateExchangePublic, GateExchangeUtils, public::sub_client::HTTP_LIMITER,
+    public::sub_client::{CONNECT_LIMITER, HTTP_LIMITER}, GateExchange, GateExchangePublic, GateExchangeUtils
   },
   from_headers,
 };
@@ -51,7 +51,6 @@ impl GateExchange {
     "Gate".to_string()
   }
 
-  #[allow(static_mut_refs)]
   async fn fetch_assets_by(&self, market: MarketType) -> Result<Vec<Asset>, ExchangeError> {
     let headers: HashMap<String, String> = HashMap::new();
 
@@ -62,7 +61,11 @@ impl GateExchange {
     };
 
     let response = loop {
-      match unsafe { &HTTP_LIMITER }.try_wait() {
+      match HTTP_LIMITER
+        .get()
+        .expect("Limiter not initialized")
+        .try_wait()
+      {
         Ok(()) => {
           break self
             .utils
@@ -189,7 +192,6 @@ impl GateExchange {
     Ok(self.public.assets.clone().unwrap())
   }
 
-  #[allow(static_mut_refs)]
   pub async fn sync_time(&mut self) -> Result<(), ExchangeError> {
     let _lock = SYNC_TIME.lock();
     let mut lock = TIME_OFFSET_MS.lock().unwrap();
@@ -202,7 +204,11 @@ impl GateExchange {
     let headers: HashMap<String, String> = HashMap::new();
 
     let response = loop {
-      match unsafe { &HTTP_LIMITER }.try_wait() {
+      match HTTP_LIMITER
+        .get()
+        .expect("Limiter not initialized")
+        .try_wait()
+      {
         Ok(()) => {
           break self
             .utils
@@ -240,19 +246,25 @@ impl GateExchange {
       self.public.time_offset_ms = server_time - local_time;
       *lock = self.public.time_offset_ms;
 
+      let connnect_limiter = Ratelimiter::builder(274, Duration::from_secs(300))
+        .max_tokens(274)
+        .initial_available(274)
+        .alignment(Alignment::Minute)
+        .sync_time(server_time as u64)
+        .build()
+        .unwrap();
+
+      let _ = CONNECT_LIMITER.set(Arc::new(connnect_limiter));
+
       let http_limiter = Ratelimiter::builder(200, Duration::from_millis(11500))
         .max_tokens(200)
-        .initial_available(200)
+        .initial_available(200 - 1)
         .alignment(Alignment::Second)
         .sync_time(server_time as u64)
         .build()
         .unwrap();
 
-      unsafe {
-        let arc_mut = &mut *HTTP_LIMITER;
-        let http_limit_ptr = Arc::as_ptr(arc_mut) as *mut Ratelimiter;
-        *http_limit_ptr = http_limiter;
-      }
+      let _ = HTTP_LIMITER.set(Arc::new(http_limiter));
 
       Ok(())
     } else {

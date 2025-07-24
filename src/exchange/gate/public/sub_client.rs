@@ -1,4 +1,3 @@
-use crate::BREAKPOINT;
 use crate::base::exchange::assets::MarketType;
 use crate::base::exchange::order::OrderBook;
 use crate::base::exchange::order::OrderBookUpdate;
@@ -8,7 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
 use rust_decimal::Decimal;
@@ -27,7 +26,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
-type Backup = Rc<RefCell<HashMap<String, Vec<String>>>>;
 
 pub struct GateSubClient {
   base: SubClient,
@@ -53,28 +51,11 @@ struct FutureDepthSnapshot {
   asks: Vec<FutureDepthSnapshotItem>,
 }
 
-pub static mut CONNECT_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(274, Duration::from_secs(300))
-      .max_tokens(274)
-      .initial_available(274)
-      .build()
-      .unwrap(),
-  )
-});
+pub static CONNECT_LIMITER: OnceCell<Arc<Ratelimiter>> = OnceCell::new();
 
-pub static mut HTTP_LIMITER: Lazy<Arc<Ratelimiter>> = Lazy::new(|| {
-  Arc::new(
-    Ratelimiter::builder(183, Duration::from_secs(10))
-      .max_tokens(183)
-      .initial_available(183)
-      .build()
-      .unwrap(),
-  )
-});
+pub static HTTP_LIMITER: OnceCell<Arc<Ratelimiter>> = OnceCell::new();
 
 impl GateSubClient {
-  #[allow(static_mut_refs)]
   async fn process_gate_depth(
     symbol: &str,
     utils: Rc<GateExchangeUtils>,
@@ -108,7 +89,11 @@ impl GateSubClient {
       let headers = from_headers!([("Accept", "application/json")]);
 
       let response = loop {
-        match unsafe { &HTTP_LIMITER }.try_wait() {
+        match HTTP_LIMITER
+          .get()
+          .expect("Limiter not initialized")
+          .try_wait()
+        {
           Ok(()) => {
             break utils
               .http_client
@@ -160,12 +145,10 @@ impl GateSubClient {
     Ok(processed)
   }
 
-  #[allow(static_mut_refs)]
   pub async fn handle_message(
     text: &str,
     shared: Shared,
     init: Init,
-    backup: Backup,
     utils: Rc<GateExchangeUtils>,
     market: MarketType,
   ) -> Option<()> {
@@ -181,28 +164,6 @@ impl GateSubClient {
       let borrow = shared.subscribed.borrow();
       borrow.get(symbol)?.clone()
     };
-
-    {
-      let mut backup_bm = backup.borrow_mut();
-      let vec = backup_bm.entry(symbol.to_string()).or_default();
-      vec.push(text.to_string());
-    }
-
-    if let Some(symbol_bp) = unsafe { &BREAKPOINT }
-      && market.eq(&MarketType::Future)
-    {
-      if symbol.contains(symbol_bp) {
-        let backup_bm = backup.borrow();
-        let vec = backup_bm.get(symbol).unwrap();
-
-        for text in vec.iter() {
-          println!("{}", text);
-        }
-        unsafe {
-          BREAKPOINT = None;
-        }
-      }
-    }
 
     let update_id = { book.borrow().update_id };
 
@@ -330,7 +291,6 @@ impl GateSubClient {
     init.borrow_mut().clear();
   }
 
-  #[allow(static_mut_refs)]
   pub fn new(utils: Rc<GateExchangeUtils>, market: MarketType, time_offset_ms: i64) -> Self {
     let ws_url = if let MarketType::Spot = market {
       "wss://api.gateio.ws/ws/v4/"
@@ -363,8 +323,6 @@ impl GateSubClient {
         .unwrap(),
     );
 
-    let backup = Backup::default();
-
     GateSubClient {
       base: SubClient::new(
         ws_url,
@@ -372,9 +330,8 @@ impl GateSubClient {
           let ic1 = ic1.clone();
           let utils = utils.clone();
           let market = market.clone();
-          let backup = backup.clone();
           async move {
-            Self::handle_message(&text, shared, ic1, backup, utils, market).await;
+            Self::handle_message(&text, shared, ic1, utils, market).await;
           }
         },
         move |_, _| async {},
@@ -383,9 +340,15 @@ impl GateSubClient {
         },
         move |symbol| Self::subscribe(m1.clone(), time_offset_ms, symbol),
         move |symbol| Self::unsubscribe(m2.clone(), time_offset_ms, symbol),
-        unsafe { CONNECT_LIMITER.clone() },
+        CONNECT_LIMITER
+          .get()
+          .cloned()
+          .expect("Limiter not initialized"),
         send_limiter,
-        unsafe { HTTP_LIMITER.clone() },
+        HTTP_LIMITER
+          .get()
+          .cloned()
+          .expect("Limiter not initialized"),
         1,
       ),
     }
@@ -457,7 +420,6 @@ impl GateSubClient {
     Ok(msg)
   }
 
-  #[allow(static_mut_refs)]
   pub async fn watch(&self, symbol: &str) -> Result<SharedBook, Box<dyn Error>> {
     self.base.watch(symbol).await
   }
