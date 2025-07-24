@@ -23,8 +23,6 @@ async fn detect_arbitrage<'a>(
   arbitrage: Arc<Arbitrage>,
   state: Arc<GlobalState>,
 ) -> Reenter<'a> {
-  let snapshot = unsafe { &mut *arbitrage.snapshot.get() };
-
   let target;
 
   if symbol.contains(':') {
@@ -33,7 +31,11 @@ async fn detect_arbitrage<'a>(
     target = spot;
   }
 
-  if let Ok(order_book) = target.watch_orderbook(symbol.clone()).await {
+  let result = target.watch_orderbook(symbol.clone()).await;
+
+  let snapshot = unsafe { &mut *arbitrage.snapshot.get() };
+
+  if let Ok(order_book) = result {
     let zero = dec!(0);
     let (spot_ask, spot_bid, future_ask, future_bid) = {
       let book = order_book.borrow();
