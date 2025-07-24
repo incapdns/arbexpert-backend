@@ -7,6 +7,7 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
+use crate::BREAKPOINT;
 use once_cell::sync::Lazy;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
@@ -26,6 +27,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
+type Backup = Rc<RefCell<HashMap<String, String>>>;
 
 pub struct GateSubClient {
   base: SubClient,
@@ -163,6 +165,7 @@ impl GateSubClient {
     text: &str,
     shared: Shared,
     init: Init,
+    backup: Backup,
     utils: Rc<GateExchangeUtils>,
     market: MarketType,
   ) -> Option<()> {
@@ -179,13 +182,24 @@ impl GateSubClient {
       borrow.get(symbol)?.clone()
     };
 
-    let update_id = { book.borrow().update_id };
-
-    if market.eq(&MarketType::Spot) && text.contains("futures.order_book_update") {
-      println!("Falso Spot | Futuro")
-    } else if market.eq(&MarketType::Future) && text.contains("spot.order_book_update") {
-      println!("Falso Futuro | Spot")
+    {
+      let mut backup = backup.borrow_mut();
+      backup.insert(symbol.to_string(), text.to_string());
     }
+
+    if let Some(symbol_bp) = unsafe { &BREAKPOINT } {
+      if symbol.contains(symbol_bp) {
+        let backup = backup.borrow();
+        for (_, text) in backup.iter() {
+          println!("{}", text);
+        }
+        unsafe {
+          BREAKPOINT = None;
+        }
+      }
+    }
+
+    let update_id = { book.borrow().update_id };
 
     let build_update = || -> Option<OrderBookUpdate> {
       let parse_side = |side: &Value| {
@@ -219,16 +233,6 @@ impl GateSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       book.borrow_mut().apply_update(&update);
-
-      let to_delete = update
-        .bids
-        .iter()
-        .filter(|(_, qty)| qty.eq(&Decimal::ZERO))
-        .collect::<Vec<_>>();
-
-      if to_delete.len() > 0 {
-        println!("symbol({}) <{:?}> {:?}", symbol, market, to_delete);
-      }
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
@@ -285,27 +289,28 @@ impl GateSubClient {
       let mut book_bm = book.borrow_mut();
       book_bm.asks = snapshot.asks;
       book_bm.bids = snapshot.bids;
+      book_bm.update_id = snapshot.update_id;
+
       for update in processed {
+        if update.first_update_id > book_bm.update_id + 1 || 
+           update.last_update_id < book_bm.update_id + 1 
+        {
+          book_bm.update_id = 0;
+          break;
+        }
+
         book_bm.apply_update(&update);
       }
-
-      //println!("Book({:?}): {} {:?}", market, symbol, book_bm);
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
       {
-        // println!(
-        //   "Checking for gap({}) {:?}: U={}, u={}, local_id={}",
-        //   symbol, market, first_update_id, last_update_id, update_id
-        // );
-
         let mut book_mut = book.borrow_mut();
 
         if first_update_id > book_mut.update_id + 1 || last_update_id < book_mut.update_id + 1 {
           book_mut.asks.clear();
           book_mut.bids.clear();
           book_mut.update_id = 0;
-          println!("Reseted({:?}): {}", market, symbol);
           return Some(());
         }
       }
@@ -353,6 +358,8 @@ impl GateSubClient {
         .unwrap(),
     );
 
+    let backup = Backup::default();
+
     GateSubClient {
       base: SubClient::new(
         ws_url,
@@ -360,8 +367,9 @@ impl GateSubClient {
           let ic1 = ic1.clone();
           let utils = utils.clone();
           let market = market.clone();
+          let backup = backup.clone();
           async move {
-            Self::handle_message(&text, shared, ic1, utils, market).await;
+            Self::handle_message(&text, shared, ic1, backup, utils, market).await;
           }
         },
         move |_, _| async {},

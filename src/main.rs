@@ -1,5 +1,8 @@
 use crate::{
-  base::exchange::{assets::{Asset, MarketType}, order::OrderBook},
+  base::exchange::{
+    assets::{Asset, MarketType},
+    order::OrderBook,
+  },
   exchange::{gate::GateExchange, mexc::MexcExchange},
   utils::exchange::setup_exchanges,
   worker::{
@@ -53,14 +56,11 @@ static mut BREAKPOINT: Option<String> = None;
 
 #[allow(static_mut_refs)]
 #[web::post("/breakpoint/{symbol}")]
-async fn breakpoint(
-  _: HttpRequest,
-  symbol: web::types::Path<String>,
-) -> HttpResponse {
+async fn breakpoint(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
   unsafe {
     BREAKPOINT.replace(symbol.to_string());
   }
-  
+
   HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
 }
 
@@ -169,7 +169,7 @@ pub struct ArbitrageSnaphot {
   //#[serde(skip)]
   pub future_bid: Decimal,
   pub entry_percent: Decimal,
-  pub exit_percent: Decimal
+  pub exit_percent: Decimal,
 }
 
 impl Default for ArbitrageSnaphot {
@@ -182,7 +182,7 @@ impl Default for ArbitrageSnaphot {
       future_ask: dec!(0),
       future_bid: dec!(0),
       entry_percent: dec!(0),
-      exit_percent: dec!(0)
+      exit_percent: dec!(0),
     }
   }
 }
@@ -293,7 +293,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_ask: dec!(0),
             spot_bid: dec!(0),
             future_ask: dec!(0),
-            future_bid: dec!(0)
+            future_bid: dec!(0),
           }),
         }));
       }
@@ -457,7 +457,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
@@ -481,7 +481,7 @@ async fn main() -> std::io::Result<()> {
   });
 
   ws_tx.set_overflow(true);
-  
+
   let global_state = Arc::new(GlobalState {
     symbol_map: Mutex::new(HashMap::new()),
     worker_channels: Mutex::new(HashMap::new()),
@@ -528,7 +528,7 @@ async fn main() -> std::io::Result<()> {
             list_arbitrage,
             monitor_futures_orderbook,
             monitor_spot_orderbook,
-            breakpoint
+            breakpoint,
           ))
           .service(
             web::resource("/resource2/index.html")
