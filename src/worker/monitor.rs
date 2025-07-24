@@ -107,11 +107,9 @@ async fn detect_arbitrage<'a>(
         let _ = state.ws_tx.try_broadcast(json);
       }
     }
-
-    arbitrage.snapshot.store(Arc::new(new_snapshot));
-  } else {
-    arbitrage.snapshot.store(Arc::new(ArbitrageSnaphot::default()));
   }
+
+  arbitrage.snapshot.store(Arc::new(new_snapshot));
 
   Reenter {
     spot,
