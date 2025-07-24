@@ -50,17 +50,17 @@ fn detect_arbitrage(
   let (spot_ask, spot_bid, future_ask, future_bid) = {
     if symbol.contains(':') {
       (
-        old_snapshot.spot_ask.clone(),
-        old_snapshot.spot_bid.clone(),
-        get_price(&order_book.asks, &zero).clone(),
+        old_snapshot.spot_ask,
+        old_snapshot.spot_bid,
+        *get_price(&order_book.asks, &zero),
         get_price(&order_book.bids, &Reverse(zero)).0,
       )
     } else {
       (
-        get_price(&order_book.asks, &zero).clone(),
+        *get_price(&order_book.asks, &zero),
         get_price(&order_book.bids, &Reverse(zero)).0,
-        old_snapshot.future_ask.clone(),
-        old_snapshot.future_bid.clone(),
+        old_snapshot.future_ask,
+        old_snapshot.future_bid,
       )
     }
   };
@@ -114,11 +114,11 @@ pub fn test() -> Option<()> {
         .as_array()?
         .iter()
         .map(|entry| {
-          let price;
-          let qty;
+          
+          
           let tmp = FutureDepthSnapshotItem::deserialize(entry).ok()?;
-          price = tmp.p;
-          qty = tmp.s;
+          let price = tmp.p;
+          let qty = tmp.s;
           Some((price, qty))
         })
         .collect::<Option<Vec<_>>>()

@@ -170,7 +170,7 @@ impl SubClient {
             update_id: 0,
           })),
         );
-        map.entry(symbol.to_string()).or_insert_with(|| Vec::new());
+        map.entry(symbol.to_string()).or_default();
         first = true;
       }
       map.get_mut(symbol).unwrap().push(tx);
@@ -215,7 +215,7 @@ impl SubClient {
   async fn send(&self, json: String) -> Result<(), Box<dyn Error>> {
     let ws_bm = self.ws.try_borrow_mut();
     ws_bm?.send(json)?;
-    return Ok(());
+    Ok(())
   }
 
   pub fn need_connect(&self) -> bool {
@@ -223,7 +223,7 @@ impl SubClient {
     if let Ok(ws) = ws_b {
       return !ws.is_connected();
     }
-    return false;
+    false
   }
 
   async fn connect(&self) -> Result<u32, Box<dyn Error>> {

@@ -74,14 +74,12 @@ impl GateSubClient {
       let uri = match market {
         MarketType::Spot => {
           format!(
-            "https://api.gateio.ws/api/v4/spot/order_book?currency_pair={}&limit=100&with_id=true",
-            symbol
+            "https://api.gateio.ws/api/v4/spot/order_book?currency_pair={symbol}&limit=100&with_id=true"
           )
         }
         MarketType::Future => {
           format!(
-            "https://fx-api.gateio.ws/api/v4/futures/usdt/order_book?contract={}&limit=100&with_id=true",
-            symbol
+            "https://fx-api.gateio.ws/api/v4/futures/usdt/order_book?contract={symbol}&limit=100&with_id=true"
           )
         }
       };
@@ -238,7 +236,7 @@ impl GateSubClient {
 
         let idx = pending.iter().position(|item| {
           item.first_update_id <= snapshot.update_id + 1
-            && item.last_update_id >= snapshot.update_id + 1
+            && item.last_update_id > snapshot.update_id
         });
 
         if idx.is_none() {

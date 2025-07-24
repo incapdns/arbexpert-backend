@@ -28,7 +28,7 @@ pub async fn worker_loop(
   rx: Receiver<Request>,
   state: Arc<GlobalState>,
 ) -> Result<(), Box<dyn Error>> {
-  println!("{} started !", worker_id);
+  println!("{worker_id} started !");
 
   let exchanges = setup_exchanges().await;
 
@@ -37,7 +37,7 @@ pub async fn worker_loop(
   loop {
     macros::select! {
       req = rx.recv() => {
-        let req = req.map_err(|err| Box::new(err));
+        let req = req.map_err(Box::new);
         tasks.push(
           process_request(
             req.unwrap(),
@@ -46,7 +46,7 @@ pub async fn worker_loop(
           )
         );
       },
-      _ = tasks.next(), if tasks.len() > 0 => {},
-    };
+      _ = tasks.next(), if !tasks.is_empty() => {},
+    }
   }
 }

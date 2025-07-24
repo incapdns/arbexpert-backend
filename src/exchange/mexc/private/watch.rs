@@ -24,8 +24,7 @@ use crate::{
 impl MexcExchange {
   fn release_private_ws(api_key: String, listen_key: String, client: Rc<MexcExchangeUtils>) {
     let url = format!(
-      "https://api.mexc.com/api/v3/userDataStream?listenKey={}",
-      listen_key
+      "https://api.mexc.com/api/v3/userDataStream?listenKey={listen_key}"
     );
 
     ntex::rt::spawn(async move {
@@ -67,7 +66,7 @@ impl MexcExchange {
     let (utils1, utils2) = (self.utils.clone(), self.utils.clone());
 
     let mut ws = WsClient::new(
-      format!("wss://wbs-api.mexc.com/ws?listenKey={}", listen_key),
+      format!("wss://wbs-api.mexc.com/ws?listenKey={listen_key}"),
       Box::new(|_: String| async {}),
       Box::new(move |_| {
         Self::release_private_ws(api_key1.clone(), listen_key1.clone(), utils1.clone());
@@ -201,7 +200,7 @@ impl MexcExchange {
       .private_pending
       .borrow_mut()
       .entry(normalized.clone())
-      .or_insert_with(Vec::new)
+      .or_default()
       .push((id, tx));
 
     let state_clone = state.clone();
@@ -244,7 +243,7 @@ impl MexcExchange {
     let json = self
       .request(url, Method::POST, headers_map, None)
       .await
-      .map_err(|e| ExchangeError::ApiError(format!("Listen key error: {}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Listen key error: {e}")))?;
 
     let client = self.private.client.as_mut().unwrap();
 
@@ -253,8 +252,7 @@ impl MexcExchange {
       Ok(listen_key.to_string())
     } else {
       Err(ExchangeError::ApiError(format!(
-        "Missing listenKey in response: {}",
-        json
+        "Missing listenKey in response: {json}"
       )))
     }
   }

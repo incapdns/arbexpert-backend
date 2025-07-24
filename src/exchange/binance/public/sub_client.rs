@@ -180,7 +180,7 @@ impl BinanceSubClient {
 
         let idx = pending.iter().position(|item| {
           item.first_update_id <= snapshot.update_id + 1
-            && item.last_update_id >= snapshot.update_id + 1
+            && item.last_update_id > snapshot.update_id
         });
 
         if idx.is_none() {

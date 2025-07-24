@@ -51,15 +51,15 @@ impl MexcExchange {
       .http_client
       .request("GET".to_string(), url.to_string(), from_headers!(headers), None) // ajuste conforme seu client
       .await
-      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {e}")))?
       .body()
       .await
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {e}")))?;
 
     let resp = std::str::from_utf8(&resp)
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid response {e:?}")))?;
 
-    let json: serde_json::Value = serde_json::from_str(&resp).map_err(ExchangeError::JsonError)?;
+    let json: serde_json::Value = serde_json::from_str(resp).map_err(ExchangeError::JsonError)?;
 
     if let Some(server_time) = json.get("serverTime").and_then(|v| v.as_i64()) {
       let local_time = SystemTime::now()

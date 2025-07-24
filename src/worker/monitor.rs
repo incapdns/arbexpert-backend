@@ -43,17 +43,17 @@ async fn detect_arbitrage<'a>(
       let book = order_book.borrow();
       if symbol.contains(':') {
         (
-          old_snapshot.spot_ask.clone(),
-          old_snapshot.spot_bid.clone(),
-          get_price(&book.asks, &zero).clone(),
+          old_snapshot.spot_ask,
+          old_snapshot.spot_bid,
+          *get_price(&book.asks, &zero),
           get_price(&book.bids, &Reverse(zero)).0,
         )
       } else {
         (
-          get_price(&book.asks, &zero).clone(),
+          *get_price(&book.asks, &zero),
           get_price(&book.bids, &Reverse(zero)).0,
-          old_snapshot.future_ask.clone(),
-          old_snapshot.future_bid.clone(),
+          old_snapshot.future_ask,
+          old_snapshot.future_bid,
         )
       }
     };

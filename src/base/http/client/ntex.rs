@@ -12,6 +12,12 @@ pub struct NtexHttpClient {
   client: Client,
 }
 
+impl Default for NtexHttpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NtexHttpClient {
   pub fn new() -> Self {
     Self {

@@ -41,7 +41,7 @@ static SYMBOLS: LazyLock<Mutex<Symbols>> = LazyLock::new(|| Mutex::new(Symbols::
 impl MexcExchange {
   pub async fn fetch_symbols(&self) -> Result<Symbols, Box<dyn std::error::Error>> {
     let mut lock = SYMBOLS.lock().unwrap();
-    if lock.len() > 0 {
+    if !lock.is_empty() {
       return Ok(lock.clone())
     }
 
@@ -68,7 +68,7 @@ impl MexcExchange {
       .body()
       .limit(10 * 1024 * 1024)
       .await
-      .map_err(|e| format!("Failed to read body: {}", e))?;
+      .map_err(|e| format!("Failed to read body: {e}"))?;
 
     let parsed: ApiResponse = serde_json::from_slice(&body)?;
 

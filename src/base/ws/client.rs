@@ -207,7 +207,7 @@ impl WsClient {
 
     let url = Url::parse(&self.url)?;
     if self.options.verbose {
-      println!("Connecting to {}", url);
+      println!("Connecting to {url}");
     }
 
     let connector = {
@@ -225,10 +225,10 @@ impl WsClient {
     let ws_client = ws::WsClient::build(&self.url)
       .connector(connector)
       .finish()
-      .map_err(|e| format!("Build error: {:?}", e))?
+      .map_err(|e| format!("Build error: {e:?}"))?
       .connect()
       .await
-      .map_err(|e| format!("Connect error: {:?}", e));
+      .map_err(|e| format!("Connect error: {e:?}"));
 
     let Ok(ws_client) = ws_client else {
       self.connect_status.store(
@@ -309,8 +309,8 @@ impl WsClient {
         let error = loop {
           macros::select! {
             ping_res = ping_intev.next() => {
-              if let None = ping_res {
-                break format!("Internal error in ping");
+              if ping_res.is_none() {
+                break "Internal error in ping".to_string();
               }
 
               ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Ping(Bytes::new())));
@@ -343,14 +343,14 @@ impl WsClient {
                     ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Pong(p)));
                   }
                   Ok(ws::Frame::Close(e)) => {
-                    break format!("Closed socket: {:?}", e);
+                    break format!("Closed socket: {e:?}");
                   }
                   Ok(ntex::ws::Frame::Continuation(_)) => {
-                    break format!("Unsupported continuation");
+                    break "Unsupported continuation".to_string();
                   }
                   Ok(ntex::ws::Frame::Pong(_)) => {}
                   Err(e) => {
-                    break format!("WebSocket error: {:?}", e);
+                    break format!("WebSocket error: {e:?}");
                   }
                 }
               }
@@ -366,18 +366,18 @@ impl WsClient {
                 break "Closed channel [maybe_cmd]".to_string();
               }
             },
-            client_res = client_tasks.next(), if client_tasks.len() > 0 => {
-              if let None = client_res {
+            client_res = client_tasks.next(), if !client_tasks.is_empty() => {
+              if client_res.is_none() {
                 break "Wsclient failed".to_string();
               }
             }
-            ext_res = ext_tasks.next(), if ext_tasks.len() > 0 => match ext_res {
+            ext_res = ext_tasks.next(), if !ext_tasks.is_empty() => match ext_res {
               None => {
                 break "Closed channel [ext_res]".to_string();
               },
               Some(result) => {
                 if let Err(e) = result {
-                  break format!("Send external failed: {}", e);
+                  break format!("Send external failed: {e}");
                 }
               }
             }

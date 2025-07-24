@@ -25,21 +25,13 @@ pub struct OrderRequest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct OrderBook {
   pub bids: BTreeMap<Reverse<Decimal>, Decimal>, // preço -> quantidade
   pub asks: BTreeMap<Decimal, Decimal>,          // preço -> quantidade
   pub update_id: u64,
 }
 
-impl Default for OrderBook {
-  fn default() -> Self {
-    Self {
-      bids: BTreeMap::new(),
-      asks: BTreeMap::new(),
-      update_id: 0,
-    }
-  }
-}
 
 #[derive(Clone, Debug)]
 pub struct OrderBookUpdate {
@@ -63,11 +55,11 @@ impl OrderBook {
     let zero = Decimal::ZERO;
 
     for (price, qty) in update.bids.iter() {
-      let key = Reverse(price.clone());
+      let key = Reverse(*price);
       if qty.eq(&zero) {
         self.bids.remove(&key);
       } else {
-        self.bids.insert(key, qty.clone());
+        self.bids.insert(key, *qty);
       }
     }
 
@@ -75,7 +67,7 @@ impl OrderBook {
       if qty.eq(&zero) {
         self.asks.remove(price);
       } else {
-        self.asks.insert(price.clone(), qty.clone());
+        self.asks.insert(*price, *qty);
       }
     }
 

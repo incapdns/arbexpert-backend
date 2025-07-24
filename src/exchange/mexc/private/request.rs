@@ -18,7 +18,7 @@ impl MexcExchange {
 
     let prehash = sorted
       .iter()
-      .map(|(k, v)| format!("{}={}", k, v))
+      .map(|(k, v)| format!("{k}={v}"))
       .collect::<Vec<_>>()
       .join("&");
 
@@ -56,10 +56,10 @@ impl MexcExchange {
 
     let final_query = sorted
       .iter()
-      .map(|(k, v)| format!("{}={}", k, v))
+      .map(|(k, v)| format!("{k}={v}"))
       .collect::<Vec<_>>()
       .join("&");
-    let final_url = format!("{}?{}", url, final_query);
+    let final_url = format!("{url}?{final_query}");
 
     let body_str = if let Some(b) = &body {
       serde_json::to_string(b).map_err(ExchangeError::JsonError)?
@@ -106,7 +106,7 @@ impl MexcExchange {
       let code = serde_json::from_str::<Value>(&text)
         .ok()
         .and_then(|v| v.get("code").and_then(|c| c.as_i64()));
-      let err = format!("API Error {}: {}", status, text);
+      let err = format!("API Error {status}: {text}");
       match code {
         Some(10000..=19999) => Err(ExchangeError::BadRequest(err)),
         Some(20000..=29999) => Err(ExchangeError::AuthenticationError(err)),

@@ -39,39 +39,36 @@ impl SubClient {
 
     let old_id = book.update_id;
 
-    match wrapper.body? {
-      Body::PublicIncreaseDepthsBatch(data) => {
-        for item in data.items {
-          let update = OrderBookUpdate {
-            last_update_id: 0,
-            first_update_id: 0,
-            asks: item
-              .asks
-              .iter()
-              .map(|item| {
-                (
-                  item.price.parse::<Decimal>().unwrap(),
-                  item.quantity.parse::<Decimal>().unwrap(),
-                )
-              })
-              .collect::<Vec<(Decimal, Decimal)>>(),
-            bids: item
-              .bids
-              .iter()
-              .map(|item| {
-                (
-                  item.price.parse::<Decimal>().unwrap(),
-                  item.quantity.parse::<Decimal>().unwrap(),
-                )
-              })
-              .collect::<Vec<(Decimal, Decimal)>>(),
-            full: false
-          };
+    if let Body::PublicIncreaseDepthsBatch(data) = wrapper.body? {
+      for item in data.items {
+        let update = OrderBookUpdate {
+          last_update_id: 0,
+          first_update_id: 0,
+          asks: item
+            .asks
+            .iter()
+            .map(|item| {
+              (
+                item.price.parse::<Decimal>().unwrap(),
+                item.quantity.parse::<Decimal>().unwrap(),
+              )
+            })
+            .collect::<Vec<(Decimal, Decimal)>>(),
+          bids: item
+            .bids
+            .iter()
+            .map(|item| {
+              (
+                item.price.parse::<Decimal>().unwrap(),
+                item.quantity.parse::<Decimal>().unwrap(),
+              )
+            })
+            .collect::<Vec<(Decimal, Decimal)>>(),
+          full: false
+        };
 
-          book.apply_update(&update);
-        }
+        book.apply_update(&update);
       }
-      _ => {}
     }
 
     subscribed
@@ -166,7 +163,7 @@ impl SubClient {
             update_id: 0,
           },
         );
-        map.entry(symbol.to_string()).or_insert_with(|| Vec::new());
+        map.entry(symbol.to_string()).or_default();
         first = true;
       }
       map.get_mut(symbol).unwrap().push(tx);

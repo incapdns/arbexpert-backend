@@ -30,6 +30,12 @@ pub struct Assets {
   pub future: BTreeMap<String, Asset>,
 }
 
+impl Default for Assets {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Assets {
   pub fn new() -> Self {
     Self {

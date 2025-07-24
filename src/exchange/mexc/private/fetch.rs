@@ -30,9 +30,9 @@ impl MexcExchange {
 
     let mut result = self.request(url, Method::GET, params, None).await?;
 
-    let array = result.as_array_mut().map(|arr| mem::take(arr));
+    let array = result.as_array_mut().map(mem::take);
 
-    if let None = array {
+    if array.is_none() {
       return Err(ExchangeError::ApiError(
         "Unexpected response format".to_string(),
       ));

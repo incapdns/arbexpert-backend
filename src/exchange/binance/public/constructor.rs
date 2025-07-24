@@ -84,11 +84,11 @@ impl BinanceExchange {
               None,
             )
             .await
-            .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {}", e)))?
+            .map_err(|e| ExchangeError::ApiError(format!("Erro ao buscar ativos: {e}")))?
             .body()
             .limit(100 * 1024 * 1024)
             .await
-            .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {}", e)))?;
+            .map_err(|e| ExchangeError::ApiError(format!("Corpo inválido: {e}")))?;
         }
         Err(duration) => {
           ntex::time::sleep(duration).await;
@@ -97,7 +97,7 @@ impl BinanceExchange {
     };
 
     let response = std::str::from_utf8(&response)
-      .map_err(|e| ExchangeError::ApiError(format!("Resposta inválida: {:?}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Resposta inválida: {e:?}")))?;
 
     let json: serde_json::Value =
       serde_json::from_str(response).map_err(ExchangeError::JsonError)?;
@@ -121,9 +121,9 @@ impl BinanceExchange {
         let symbol_name;
 
         if let MarketType::Spot = market {
-          symbol_name = format!("{}/{}", base, quote);
+          symbol_name = format!("{base}/{quote}");
         } else {
-          symbol_name = format!("{}/{}:{}", base, quote, quote);
+          symbol_name = format!("{base}/{quote}:{quote}");
         }
 
         assets.push(Asset {
@@ -171,7 +171,7 @@ impl BinanceExchange {
     let _lock = LOAD_ASSETS.lock();
     {
       let lock = ASSETS.lock().unwrap();
-      if lock.spot.len() > 0 {
+      if !lock.spot.is_empty() {
         self.public.assets = Some(lock.clone());
         return Ok(lock.clone());
       }
@@ -205,16 +205,16 @@ impl BinanceExchange {
         None,
       ) // ajuste conforme seu client
       .await
-      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {e}")))?
       .body()
       .await
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {e}")))?;
 
     let response = std::str::from_utf8(&response)
-      .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid response {e:?}")))?;
 
     let json: serde_json::Value =
-      serde_json::from_str(&response).map_err(ExchangeError::JsonError)?;
+      serde_json::from_str(response).map_err(ExchangeError::JsonError)?;
 
     if let Some(server_time) = json.get("serverTime").and_then(|v| v.as_i64()) {
       let local_time = SystemTime::now()

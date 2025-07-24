@@ -104,7 +104,7 @@ async fn start_arbitrage(
   if let Some(tx) = tx {
     let _ = tx.send(Request::StartArbitrage(command)).await;
 
-    HttpResponse::Ok().body(format!("Started!"))
+    HttpResponse::Ok().body("Started!".to_string())
   } else {
     HttpResponse::InternalServerError().body("Worker not found")
   }
@@ -117,10 +117,10 @@ async fn monitor_futures_orderbook(
 ) -> HttpResponse {
   let gate = GateExchange::new().await;
 
-  let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
+  let result = gate.watch_orderbook(format!("{symbol}/USDT:USDT")).await;
 
   if let Ok(orderbook) = result {
-    HttpResponse::Ok().body(format!("{:?}", orderbook))
+    HttpResponse::Ok().body(format!("{orderbook:?}"))
   } else {
     HttpResponse::InternalServerError().body("Worker not found")
   }
@@ -130,10 +130,10 @@ async fn monitor_futures_orderbook(
 async fn monitor_spot_orderbook(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
   let gate = GateExchange::new().await;
 
-  let result = gate.watch_orderbook(format!("{}/USDT:USDT", symbol)).await;
+  let result = gate.watch_orderbook(format!("{symbol}/USDT:USDT")).await;
 
   if let Ok(orderbook) = result {
-    HttpResponse::Ok().body(format!("{:?}", orderbook))
+    HttpResponse::Ok().body(format!("{orderbook:?}"))
   } else {
     HttpResponse::InternalServerError().body("Worker not found")
   }
@@ -174,8 +174,8 @@ pub struct ArbitrageSnaphot {
 impl Default for ArbitrageSnaphot {
   fn default() -> Self {
     ArbitrageSnaphot {
-      base: format!(""),
-      quote: format!(""),
+      base: String::new(),
+      quote: String::new(),
       spot_ask: dec!(0),
       spot_bid: dec!(0),
       future_ask: dec!(0),
@@ -327,7 +327,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
 async fn start_monitor(data: web::types::State<Arc<GlobalState>>) -> HttpResponse {
   rt::spawn(cross_assets_all_exchanges(data));
 
-  HttpResponse::Ok().body(format!("Starting"))
+  HttpResponse::Ok().body("Starting".to_string())
 }
 
 async fn index_async(_: HttpRequest) -> &'static str {
@@ -384,17 +384,17 @@ async fn ws_service(
 
           tasks.push(sink_clone.send(web::ws::Message::Text(msg.into())));
         },
-        task = tasks.next(), if tasks.len() > 0 => {
+        task = tasks.next(), if !tasks.is_empty() => {
           let Some(res) = task else { return };
 
-          if let Err(_) = res {
+          if res.is_err() {
             return
           }
         },
         _ = close_rx.recv()  => {
           return
         }
-      };
+      }
     }
   });
 
