@@ -48,7 +48,7 @@ rand = "0.9.2"
 prost-build = "0.14.1"
 
 [profile.release]
-opt-level = 2          # 3 para máxima performance (veja abaixo)
+opt-level = 3          # 3 para máxima performance (veja abaixo)
 lto = true             # Link Time Optimization (reduz o tamanho e melhora desempenho)
 codegen-units = 1      # Compila tudo de uma vez (melhor otimização, pior tempo de build)
 panic = "abort"        # Remove rastreamento de stack em panics = binário menor
