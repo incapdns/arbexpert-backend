@@ -1,3 +1,4 @@
+use crate::BREAKPOINT;
 use crate::base::exchange::assets::MarketType;
 use crate::base::exchange::order::OrderBook;
 use crate::base::exchange::order::OrderBookUpdate;
@@ -7,7 +8,6 @@ use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
 use crate::from_headers;
-use crate::BREAKPOINT;
 use once_cell::sync::Lazy;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
@@ -27,7 +27,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
-type Backup = Rc<RefCell<HashMap<String, String>>>;
+type Backup = Rc<RefCell<HashMap<String, Vec<String>>>>;
 
 pub struct GateSubClient {
   base: SubClient,
@@ -183,16 +183,19 @@ impl GateSubClient {
     };
 
     {
-      let mut backup = backup.borrow_mut();
-      backup.insert(symbol.to_string(), text.to_string());
+      let mut backup_bm = backup.borrow_mut();
+      let vec = backup_bm.entry(symbol.to_string()).or_default();
+      vec.push(text.to_string());
     }
 
-    if let Some(symbol_bp) = unsafe { &BREAKPOINT } && 
-       market.eq(&MarketType::Future)
+    if let Some(symbol_bp) = unsafe { &BREAKPOINT }
+      && market.eq(&MarketType::Future)
     {
       if symbol.contains(symbol_bp) {
-        let backup = backup.borrow();
-        for (_, text) in backup.iter() {
+        let backup_bm = backup.borrow();
+        let vec = backup_bm.get(symbol).unwrap();
+
+        for text in vec.iter() {
           println!("{}", text);
         }
         unsafe {
@@ -294,8 +297,8 @@ impl GateSubClient {
       book_bm.update_id = snapshot.update_id;
 
       for update in processed {
-        if update.first_update_id > book_bm.update_id + 1 || 
-           update.last_update_id < book_bm.update_id + 1 
+        if update.first_update_id > book_bm.update_id + 1
+          || update.last_update_id < book_bm.update_id + 1
         {
           book_bm.update_id = 0;
           break;
