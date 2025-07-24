@@ -1,7 +1,6 @@
 use crate::{
   base::exchange::{
     assets::{Asset, MarketType},
-    order::OrderBook,
   },
   exchange::{gate::GateExchange, mexc::MexcExchange},
   utils::exchange::setup_exchanges,
@@ -36,8 +35,7 @@ use std::{
   net::SocketAddr,
   rc::Rc,
   sync::{
-    Arc, Mutex, RwLock,
-    atomic::{AtomicBool, AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, RwLock
   },
   vec,
 };
@@ -191,30 +189,29 @@ impl Default for ArbitrageSnaphot {
 pub struct Arbitrage {
   pub spot: Asset,   // Spot de uma exchange
   pub future: Asset, // Futuro de outra exchange
-  #[serde(with = "unsafe_cell_abr")]
-  pub snapshot: UnsafeCell<ArbitrageSnaphot>,
+  #[serde(with = "rwlock_snapshot")]
+  pub snapshot: RwLock<ArbitrageSnaphot>,
 }
 
-mod unsafe_cell_abr {
+mod rwlock_snapshot {
+  use std::sync::RwLock;
   use serde::{Deserialize, Deserializer, Serialize, Serializer};
-  use std::cell::UnsafeCell;
-
   use crate::ArbitrageSnaphot;
 
-  pub fn serialize<S>(cell: &UnsafeCell<ArbitrageSnaphot>, serializer: S) -> Result<S::Ok, S::Error>
+  pub fn serialize<S>(cell: &RwLock<ArbitrageSnaphot>, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    let inner = unsafe { &*cell.get() };
+    let inner = cell.read().unwrap();
     inner.serialize(serializer)
   }
 
-  pub fn deserialize<'de, D>(deserializer: D) -> Result<UnsafeCell<ArbitrageSnaphot>, D::Error>
+  pub fn deserialize<'de, D>(deserializer: D) -> Result<RwLock<ArbitrageSnaphot>, D::Error>
   where
     D: Deserializer<'de>,
   {
     let val = ArbitrageSnaphot::deserialize(deserializer)?;
-    Ok(UnsafeCell::new(val))
+    Ok(RwLock::new(val))
   }
 }
 
@@ -285,7 +282,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         vec_mut.push(Arc::new(Arbitrage {
           spot: (*spot).clone(),
           future: (*future).clone(),
-          snapshot: UnsafeCell::new(ArbitrageSnaphot {
+          snapshot: RwLock::new(ArbitrageSnaphot {
             base: spot.base.to_string(),
             quote: spot.quote.to_string(),
             entry_percent: dec!(0),
