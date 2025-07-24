@@ -1,3 +1,4 @@
+use arc_swap::ArcSwap;
 use crate::{
   base::exchange::{
     assets::{Asset, MarketType},
@@ -30,7 +31,7 @@ use rustls::crypto::aws_lc_rs::default_provider;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-  cell::{RefCell, UnsafeCell},
+  cell::RefCell,
   collections::{BTreeMap, HashMap},
   net::SocketAddr,
   rc::Rc,
@@ -189,29 +190,29 @@ impl Default for ArbitrageSnaphot {
 pub struct Arbitrage {
   pub spot: Asset,   // Spot de uma exchange
   pub future: Asset, // Futuro de outra exchange
-  #[serde(with = "rwlock_snapshot")]
-  pub snapshot: RwLock<ArbitrageSnaphot>,
+  #[serde(with = "arcswap_snapshot")]
+  pub snapshot: ArcSwap<ArbitrageSnaphot>,
 }
 
-mod rwlock_snapshot {
-  use std::sync::RwLock;
+mod arcswap_snapshot {
+  use arc_swap::ArcSwap;
   use serde::{Deserialize, Deserializer, Serialize, Serializer};
   use crate::ArbitrageSnaphot;
 
-  pub fn serialize<S>(cell: &RwLock<ArbitrageSnaphot>, serializer: S) -> Result<S::Ok, S::Error>
+  pub fn serialize<S>(cell: &ArcSwap<ArbitrageSnaphot>, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    let inner = cell.read().unwrap();
+    let inner = cell.load_full();
     inner.serialize(serializer)
   }
 
-  pub fn deserialize<'de, D>(deserializer: D) -> Result<RwLock<ArbitrageSnaphot>, D::Error>
+  pub fn deserialize<'de, D>(deserializer: D) -> Result<ArcSwap<ArbitrageSnaphot>, D::Error>
   where
     D: Deserializer<'de>,
   {
     let val = ArbitrageSnaphot::deserialize(deserializer)?;
-    Ok(RwLock::new(val))
+    Ok(ArcSwap::new(val.into()))
   }
 }
 
@@ -282,7 +283,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
         vec_mut.push(Arc::new(Arbitrage {
           spot: (*spot).clone(),
           future: (*future).clone(),
-          snapshot: RwLock::new(ArbitrageSnaphot {
+          snapshot: ArcSwap::new(Arc::new(ArbitrageSnaphot {
             base: spot.base.to_string(),
             quote: spot.quote.to_string(),
             entry_percent: dec!(0),
@@ -291,7 +292,7 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
             spot_bid: dec!(0),
             future_ask: dec!(0),
             future_bid: dec!(0),
-          }),
+          })),
         }));
       }
     }
@@ -454,7 +455,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 

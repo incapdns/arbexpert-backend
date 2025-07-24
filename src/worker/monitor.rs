@@ -33,82 +33,84 @@ async fn detect_arbitrage<'a>(
 
   let result = target.watch_orderbook(symbol.clone()).await;
 
-  {
-    let mut snapshot = arbitrage.snapshot.write().unwrap();
+  let mut new_snapshot = ArbitrageSnaphot::default();
 
-    if let Ok(order_book) = result {
-      let zero = dec!(0);
-      let (spot_ask, spot_bid, future_ask, future_bid) = {
-        let book = order_book.borrow();
-        if symbol.contains(':') {
-          (
-            snapshot.spot_ask.clone(),
-            snapshot.spot_bid.clone(),
-            get_price(&book.asks, &zero).clone(),
-            get_price(&book.bids, &Reverse(zero)).0,
-          )
-        } else {
-          (
-            get_price(&book.asks, &zero).clone(),
-            get_price(&book.bids, &Reverse(zero)).0,
-            snapshot.future_ask.clone(),
-            snapshot.future_bid.clone(),
-          )
-        }
-      };
+  if let Ok(order_book) = result {
+    let old_snapshot = arbitrage.snapshot.load();
 
-      let new_entry_percent = if spot_ask != zero {
-        ((future_bid - spot_ask) / spot_ask) * dec!(100)
+    let zero = dec!(0);
+    let (spot_ask, spot_bid, future_ask, future_bid) = {
+      let book = order_book.borrow();
+      if symbol.contains(':') {
+        (
+          old_snapshot.spot_ask.clone(),
+          old_snapshot.spot_bid.clone(),
+          get_price(&book.asks, &zero).clone(),
+          get_price(&book.bids, &Reverse(zero)).0,
+        )
       } else {
-        dec!(0)
+        (
+          get_price(&book.asks, &zero).clone(),
+          get_price(&book.bids, &Reverse(zero)).0,
+          old_snapshot.future_ask.clone(),
+          old_snapshot.future_bid.clone(),
+        )
       }
-      .trunc_with_scale(2);
+    };
 
-      let new_exit_percent = if future_ask != zero {
-        ((spot_bid - future_ask) / future_ask) * dec!(100)
-      } else {
-        dec!(0)
-      }
-      .trunc_with_scale(2);
-
-      let percent = dec!(0.05);
-
-      let entry_delta = (new_entry_percent - snapshot.entry_percent).abs();
-      let exit_delta = (new_exit_percent - snapshot.exit_percent).abs();
-
-      let mut need_notification = entry_delta > percent || exit_delta > percent;
-
-      snapshot.entry_percent = new_entry_percent;
-      snapshot.exit_percent = new_exit_percent;
-
-      snapshot.spot_ask = spot_ask;
-      snapshot.spot_bid = spot_bid;
-      snapshot.future_ask = future_ask;
-      snapshot.future_bid = future_bid;
-
-      let not_first = snapshot.spot_ask > zero
-        && snapshot.spot_bid > zero
-        && snapshot.future_ask > zero
-        && snapshot.future_bid > zero;
-
-      need_notification = need_notification && not_first;
-
-      let max = dec!(50);
-
-      let valid = snapshot.entry_percent.abs() < max && snapshot.exit_percent.abs() < max;
-
-      need_notification = need_notification && valid;
-
-      if need_notification {
-        let notification = serde_json::to_string(arbitrage.as_ref());
-
-        if let Ok(json) = notification {
-          let _ = state.ws_tx.try_broadcast(json);
-        }
-      }
+    let new_entry_percent = if spot_ask != zero {
+      ((future_bid - spot_ask) / spot_ask) * dec!(100)
     } else {
-      *snapshot = ArbitrageSnaphot::default();
+      dec!(0)
     }
+    .trunc_with_scale(2);
+
+    let new_exit_percent = if future_ask != zero {
+      ((spot_bid - future_ask) / future_ask) * dec!(100)
+    } else {
+      dec!(0)
+    }
+    .trunc_with_scale(2);
+
+    let percent = dec!(0.05);
+
+    let entry_delta = (new_entry_percent - old_snapshot.entry_percent).abs();
+    let exit_delta = (new_exit_percent - old_snapshot.exit_percent).abs();
+
+    let mut need_notification = entry_delta > percent || exit_delta > percent;
+
+    new_snapshot.entry_percent = new_entry_percent;
+    new_snapshot.exit_percent = new_exit_percent;
+
+    new_snapshot.spot_ask = spot_ask;
+    new_snapshot.spot_bid = spot_bid;
+    new_snapshot.future_ask = future_ask;
+    new_snapshot.future_bid = future_bid;
+
+    let not_first = new_snapshot.spot_ask > zero
+      && new_snapshot.spot_bid > zero
+      && new_snapshot.future_ask > zero
+      && new_snapshot.future_bid > zero;
+
+    need_notification = need_notification && not_first;
+
+    let max = dec!(50);
+
+    let valid = new_snapshot.entry_percent.abs() < max && new_snapshot.exit_percent.abs() < max;
+
+    need_notification = need_notification && valid;
+
+    if need_notification {
+      let notification = serde_json::to_string(arbitrage.as_ref());
+
+      if let Ok(json) = notification {
+        let _ = state.ws_tx.try_broadcast(json);
+      }
+    }
+
+    arbitrage.snapshot.store(Arc::new(new_snapshot));
+  } else {
+    arbitrage.snapshot.store(Arc::new(ArbitrageSnaphot::default()));
   }
 
   Reenter {
