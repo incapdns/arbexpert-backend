@@ -187,7 +187,9 @@ impl GateSubClient {
       backup.insert(symbol.to_string(), text.to_string());
     }
 
-    if let Some(symbol_bp) = unsafe { &BREAKPOINT } {
+    if let Some(symbol_bp) = unsafe { &BREAKPOINT } && 
+       market.eq(&MarketType::Future)
+    {
       if symbol.contains(symbol_bp) {
         let backup = backup.borrow();
         for (_, text) in backup.iter() {
