@@ -374,7 +374,7 @@ async fn ws_service(
 
   let (close_tx, close_rx) = oneshot::channel();
 
-  ntex::rt::spawn(async move {
+  rt::spawn(async move {
     let mut tasks = FuturesUnordered::new();
 
     loop {
