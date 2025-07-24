@@ -181,7 +181,11 @@ impl GateSubClient {
 
     let update_id = { book.borrow().update_id };
 
-    println!("Debug: {text}");
+    if market.eq(&MarketType::Spot) && text.contains("futures.order_book_update") {
+      println!("Falso Spot | Futuro")
+    } else if market.eq(&MarketType::Future) && text.contains("spot.order_book_update") {
+      println!("Falso Futuro | Spot")
+    }
 
     let build_update = || -> Option<OrderBookUpdate> {
       let parse_side = |side: &Value| {
@@ -215,6 +219,17 @@ impl GateSubClient {
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
       book.borrow_mut().apply_update(&update);
+
+      let to_delete = update
+        .bids
+        .iter()
+        .filter(|(_, qty)| qty.eq(&Decimal::ZERO))
+        .collect::<Vec<_>>();
+
+      if to_delete.len() > 0 {
+        println!("symbol({}) <{:?}> {:?}", symbol, market, to_delete);
+      }
+
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
@@ -274,15 +289,15 @@ impl GateSubClient {
         book_bm.apply_update(&update);
       }
 
-      println!("Book({:?}): {} {:?}", market, symbol, book_bm);
+      //println!("Book({:?}): {} {:?}", market, symbol, book_bm);
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
       {
-        println!(
-          "Checking for gap({}) {:?}: U={}, u={}, local_id={}",
-          symbol, market, first_update_id, last_update_id, update_id
-        );
+        // println!(
+        //   "Checking for gap({}) {:?}: U={}, u={}, local_id={}",
+        //   symbol, market, first_update_id, last_update_id, update_id
+        // );
 
         let mut book_mut = book.borrow_mut();
 

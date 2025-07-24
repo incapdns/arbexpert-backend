@@ -457,7 +457,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
@@ -509,6 +509,7 @@ async fn main() -> std::io::Result<()> {
             Cors::new() // <- Construct CORS middleware builder
               .allowed_origin("https://www.arbexpert.com")
               .allowed_origin("https://arbexpert.com")
+              .allowed_origin("http://127.0.0.1:5500")
               .allowed_methods(vec![Method::GET, Method::POST])
               .allowed_headers(vec![
                 header::AUTHORIZATION,
