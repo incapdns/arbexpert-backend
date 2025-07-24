@@ -332,8 +332,6 @@ async fn cross_assets_all_exchanges(state: web::types::State<Arc<GlobalState>>) 
   }
 }
 
-unsafe impl Sync for Arbitrage {}
-
 #[web::post("/monitor/start")]
 async fn start_monitor(data: web::types::State<Arc<GlobalState>>) -> HttpResponse {
   rt::spawn(cross_assets_all_exchanges(data));
