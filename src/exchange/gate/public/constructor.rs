@@ -18,7 +18,8 @@ use crate::{
     http::{client::ntex::NtexHttpClient, generic::DynamicIterator},
   },
   exchange::gate::{
-    public::sub_client::{CONNECT_LIMITER, HTTP_LIMITER}, GateExchange, GateExchangePublic, GateExchangeUtils
+    GateExchange, GateExchangePublic, GateExchangeUtils,
+    public::sub_client::{CONNECT_LIMITER, HTTP_LIMITER},
   },
   from_headers,
 };
@@ -203,33 +204,20 @@ impl GateExchange {
     let url = "https://api.gateio.ws/api/v4/spot/time";
     let headers: HashMap<String, String> = HashMap::new();
 
-    let response = loop {
-      match HTTP_LIMITER
-        .get()
-        .expect("Limiter not initialized")
-        .try_wait()
-      {
-        Ok(()) => {
-          break self
-            .utils
-            .http_client
-            .request(
-              "GET".to_string(),
-              url.to_string(),
-              from_headers!(headers),
-              None,
-            ) // ajuste conforme seu client
-            .await
-            .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
-            .body()
-            .await
-            .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
-        }
-        Err(duration) => {
-          ntex::time::sleep(duration).await;
-        }
-      }
-    };
+    let response = self
+      .utils
+      .http_client
+      .request(
+        "GET".to_string(),
+        url.to_string(),
+        from_headers!(headers),
+        None,
+      ) // ajuste conforme seu client
+      .await
+      .map_err(|e| ExchangeError::ApiError(format!("Sync time error: {}", e)))?
+      .body()
+      .await
+      .map_err(|e| ExchangeError::ApiError(format!("Invalid body: {}", e)))?;
 
     let response = std::str::from_utf8(&response)
       .map_err(|e| ExchangeError::ApiError(format!("Invalid response {:?}", e)))?;
