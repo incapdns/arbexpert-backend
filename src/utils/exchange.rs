@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub async fn setup_exchanges() -> Vec<Box<dyn Exchange>> {
-  let (gate, binance) = join!(GateExchange::new(), BinanceExchange::new());
+  let (gate, _) = join!(GateExchange::new(), BinanceExchange::new());
 
   vec![Box::new(gate),]
 }

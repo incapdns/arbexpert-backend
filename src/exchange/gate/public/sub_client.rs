@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use ntex::util::HashSet;
+use rust_decimal::prelude::Zero;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 type Backup = Rc<RefCell<HashMap<String, Vec<String>>>>;
@@ -229,8 +230,12 @@ impl GateSubClient {
         }
 
         let mut history_bm = history_bids.borrow_mut();
-        for (price, _) in &update.bids {
-          history_bm.insert(*price);
+        for (price, qty) in &update.bids {
+          if qty.eq(&Decimal::ZERO) {
+            history_bm.remove(&price);
+          } else {
+            history_bm.insert(*price);
+          }
         }
 
         for (r_bid, _) in book.borrow().bids.iter() {
@@ -316,8 +321,12 @@ impl GateSubClient {
           break;
         }
         book_bm.apply_update(&update, &mut updates);
-        for (price, _) in &update.bids {
-          history_bm.insert(*price);
+        for (price, qty) in &update.bids {
+          if qty.eq(&Decimal::ZERO) {
+            history_bm.remove(&price);
+          } else {
+            history_bm.insert(*price);
+          }
         }
       }
 
