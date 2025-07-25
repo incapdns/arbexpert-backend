@@ -297,11 +297,16 @@ impl GateSubClient {
       book_bm.bids = snapshot.bids;
       book_bm.update_id = snapshot.update_id;
 
+      let mut history_bm = history_bids.borrow_mut();
+
+      for (r_price, _) in &book_bm.bids {
+        history_bm.insert(r_price.0.clone());
+      }
+
       let mut backup_bm = backup.borrow_mut();
       let messages = backup_bm.get_mut(symbol)?;
       let last_message = messages.last_mut().expect("Internal error");
 
-      let mut history_bm = history_bids.borrow_mut();
       let mut updates = vec![];
       for update in processed {
         if update.first_update_id > book_bm.update_id + 1
