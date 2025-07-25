@@ -316,44 +316,40 @@ impl WsClient {
               ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Ping(Bytes::new())));
             },
             message = rx_ws.next() => match message {
-              Some(result) => {
-                match result {
-                  Ok(ws::Frame::Binary(bin)) => {
-                    let task = (on_binary)(bin.to_vec());
-                    let task_projection = project!(task);
+              Some(Ok(ws::Frame::Binary(bin))) => {
+                let task = on_binary(bin.to_vec());
+                let task_projection = project!(task);
 
-                    if task_projection.is_err() {
-                      client_tasks.push(task_projection.err().unwrap());
-                    }
-                  }
-                  Ok(ws::Frame::Text(txt)) => {
-                    let str = String::from_utf8(txt.to_vec());
-                    if let Ok(txt) = str {
-                      let task = (on_message)(txt);
-                      let task_projection = project!(task);
-
-                      if task_projection.is_err() {
-                        client_tasks.push(task_projection.err().unwrap());
-                      }
-                    } else {
-                      break "Parser utf8 failed".to_string();
-                    }
-                  }
-                  Ok(ws::Frame::Ping(p)) => {
-                    ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Pong(p)));
-                  }
-                  Ok(ws::Frame::Close(e)) => {
-                    break format!("Closed socket: {e:?}");
-                  }
-                  Ok(ntex::ws::Frame::Continuation(_)) => {
-                    break "Unsupported continuation".to_string();
-                  }
-                  Ok(ntex::ws::Frame::Pong(_)) => {}
-                  Err(e) => {
-                    break format!("WebSocket error: {e:?}");
-                  }
+                if task_projection.is_err() {
+                  client_tasks.push(task_projection.err().unwrap());
                 }
               }
+              Some(Ok(ws::Frame::Text(txt))) => {
+                let str = String::from_utf8(txt.to_vec());
+                if let Ok(txt) = str {
+                  let task = on_message(txt);
+                  let task_projection = project!(task);
+
+                  if task_projection.is_err() {
+                    client_tasks.push(task_projection.err().unwrap());
+                  }
+                } else {
+                  break "Parser utf8 failed".to_string();
+                }
+              }
+              Some(Ok(ws::Frame::Ping(p))) => {
+                ext_tasks.push(send(sink.clone(), limiter.clone(), ws::Message::Pong(p)));
+              }
+              Some(Ok(ws::Frame::Close(e))) => {
+                break format!("Closed socket: {e:?}");
+              }
+              Some(Ok(ntex::ws::Frame::Continuation(_))) => {
+                break "Unsupported continuation".to_string();
+              }
+              Some(Ok(ntex::ws::Frame::Pong(_))) => {}
+              Some(Err(e)) => {
+                break format!("WebSocket error: {e:?}");
+              },
               None => {
                 break "Closed channel [message]".to_string();
               }

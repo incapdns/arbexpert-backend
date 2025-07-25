@@ -39,21 +39,23 @@ async fn detect_arbitrage<'a>(
     let old_snapshot = arbitrage.snapshot.load();
 
     let zero = dec!(0);
-    let (spot_ask, spot_bid, future_ask, future_bid) = {
+    let (spot_ask, spot_bid, future_ask, future_bid, future_bid_qty) = {
       let book = order_book.borrow();
       if symbol.contains(':') {
         (
           old_snapshot.spot_ask,
           old_snapshot.spot_bid,
-          *get_price(&book.asks, &zero),
-          get_price(&book.bids, &Reverse(zero)).0,
+          get_price(&book.asks).0,
+          get_price(&book.bids).0.0,
+          get_price(&book.bids).1,
         )
       } else {
         (
-          *get_price(&book.asks, &zero),
-          get_price(&book.bids, &Reverse(zero)).0,
+          get_price(&book.asks).0,
+          get_price(&book.bids).0.0,
           old_snapshot.future_ask,
           old_snapshot.future_bid,
+          old_snapshot.future_bid_qty,
         )
       }
     };
@@ -86,6 +88,7 @@ async fn detect_arbitrage<'a>(
     new_snapshot.spot_bid = spot_bid;
     new_snapshot.future_ask = future_ask;
     new_snapshot.future_bid = future_bid;
+    new_snapshot.future_bid_qty = future_bid_qty;
 
     let not_first = new_snapshot.spot_ask > zero
       && new_snapshot.spot_bid > zero

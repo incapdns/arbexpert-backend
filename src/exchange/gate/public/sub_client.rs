@@ -6,7 +6,7 @@ use crate::base::exchange::sub_client::SharedBook;
 use crate::base::exchange::sub_client::SubClient;
 use crate::base::http::generic::DynamicIterator;
 use crate::exchange::gate::GateExchangeUtils;
-use crate::from_headers;
+use crate::{from_headers, BREAKPOINT, TEMP};
 use once_cell::sync::OnceCell;
 use ratelimit::Alignment;
 use ratelimit::Ratelimiter;
@@ -18,14 +18,18 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::format;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use ntex::util::HashSet;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
+type Backup = Rc<RefCell<HashMap<String, Vec<String>>>>;
+type HistoryBids = Rc<RefCell<HashSet<Decimal>>>;
 
 pub struct GateSubClient {
   base: SubClient,
@@ -146,6 +150,8 @@ impl GateSubClient {
   pub async fn handle_message(
     text: &str,
     shared: Shared,
+    backup: Backup,
+    history_bids: HistoryBids,
     init: Init,
     utils: Rc<GateExchangeUtils>,
     market: MarketType,
@@ -162,6 +168,12 @@ impl GateSubClient {
       let borrow = shared.subscribed.borrow();
       borrow.get(symbol)?.clone()
     };
+
+    {
+      let mut backup_bm = backup.borrow_mut();
+      let messages = backup_bm.entry(symbol.to_string()).or_default();
+      messages.push(text.to_string());
+    }
 
     let update_id = { book.borrow().update_id };
 
@@ -196,7 +208,37 @@ impl GateSubClient {
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      book.borrow_mut().apply_update(&update);
+      {
+        let mut backup_bm = backup.borrow_mut();
+        let messages = backup_bm.get_mut(symbol)?;
+        let last_message = messages.last_mut().expect("Internal error");
+
+        let mut updates = vec![];
+        book.borrow_mut().apply_update(&update, &mut updates);
+
+        *last_message = format!("{last_message} | [{}]", updates.join(","));
+
+        let mut bp_lock = BREAKPOINT.lock().unwrap();
+        if let Some(symbol_bp) = bp_lock.as_ref() {
+          if symbol_bp.eq(symbol) && market.eq(&MarketType::Future) {
+            let temp = format!("{}\n\n{:?}", messages.join("\n"), book);
+            let mut lock = TEMP.lock().unwrap();
+            *lock = Some(temp);
+            *bp_lock = None; // Limpa o breakpoint
+          }
+        }
+
+        let mut history_bm = history_bids.borrow_mut();
+        for (price, _) in &update.bids {
+          history_bm.insert(*price);
+        }
+
+        for (r_bid, _) in book.borrow().bids.iter() {
+          if history_bm.get(&r_bid.0).is_none() {
+            panic!("Error in BID price {:?}", r_bid);
+          }
+        }
+      }
 
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
@@ -255,6 +297,12 @@ impl GateSubClient {
       book_bm.bids = snapshot.bids;
       book_bm.update_id = snapshot.update_id;
 
+      let mut backup_bm = backup.borrow_mut();
+      let messages = backup_bm.get_mut(symbol)?;
+      let last_message = messages.last_mut().expect("Internal error");
+
+      let mut history_bm = history_bids.borrow_mut();
+      let mut updates = vec![];
       for update in processed {
         if update.first_update_id > book_bm.update_id + 1
           || update.last_update_id < book_bm.update_id + 1
@@ -262,9 +310,13 @@ impl GateSubClient {
           book_bm.update_id = 0;
           break;
         }
-
-        book_bm.apply_update(&update);
+        book_bm.apply_update(&update, &mut updates);
+        for (price, _) in &update.bids {
+          history_bm.insert(*price);
+        }
       }
+
+      *last_message = format!("{last_message} | [{}]", updates.join(","));
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);
     } else {
@@ -296,13 +348,17 @@ impl GateSubClient {
       "wss://fx-ws.gateio.ws/v4/ws/usdt"
     };
 
-    let init = Rc::new(RefCell::new(HashMap::new()));
+    let init = Init::default();
 
     let (ic1, ic2) = (init.clone(), init);
 
     let market_cl = market.clone();
 
     let (m1, m2) = (market_cl.clone(), market_cl);
+
+    let backup = Backup::default();
+
+    let history_bids = HistoryBids::default();
 
     let now = SystemTime::now()
       .duration_since(UNIX_EPOCH)
@@ -328,8 +384,10 @@ impl GateSubClient {
           let ic1 = ic1.clone();
           let utils = utils.clone();
           let market = market.clone();
+          let backup = backup.clone();
+          let history_bids = history_bids.clone();
           async move {
-            Self::handle_message(&text, shared, ic1, utils, market).await;
+            Self::handle_message(&text, shared, backup, history_bids, ic1, utils, market).await;
           }
         },
         move |_, _| async {},

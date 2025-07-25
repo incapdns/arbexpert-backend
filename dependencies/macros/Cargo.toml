@@ -19,6 +19,9 @@ categories = ["asynchronous"]
 [lib]
 proc-macro = false
 
+[dependencies]
+tokio-macros = { version = "~2.5.0", path = "../tokio-macros" }
+
 [features]
 
 [package.metadata.docs.rs]

@@ -46,21 +46,24 @@ fn detect_arbitrage(
 ) -> Result {
   let old_snapshot = arbitrage.snapshot.load();
 
-  let zero = Decimal::ZERO;
-  let (spot_ask, spot_bid, future_ask, future_bid) = {
+  let zero = dec!(0);
+  let (spot_ask, spot_bid, future_ask, future_bid, _) = {
+    let book = order_book;
     if symbol.contains(':') {
       (
         old_snapshot.spot_ask,
         old_snapshot.spot_bid,
-        *get_price(&order_book.asks, &zero),
-        get_price(&order_book.bids, &Reverse(zero)).0,
+        get_price(&book.asks).0,
+        get_price(&book.bids).0.0,
+        get_price(&book.bids).1,
       )
     } else {
       (
-        *get_price(&order_book.asks, &zero),
-        get_price(&order_book.bids, &Reverse(zero)).0,
+        get_price(&book.asks).0,
+        get_price(&book.bids).0.0,
         old_snapshot.future_ask,
         old_snapshot.future_bid,
+        old_snapshot.future_bid_qty,
       )
     }
   };
@@ -133,7 +136,7 @@ pub fn test() -> Option<()> {
     })
   };
 
-  book.apply_update(&build_update()?);
+  book.apply_update(&build_update()?, &mut vec![]);
 
   let arbitrage = Arc::new(Arbitrage {
     spot: Asset {

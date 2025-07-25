@@ -42,8 +42,10 @@ pub struct OrderBookUpdate {
   pub full: bool,
 }
 
+
+
 impl OrderBook {
-  pub fn apply_update(&mut self, update: &OrderBookUpdate) {
+  pub fn apply_update(&mut self, update: &OrderBookUpdate, updates: &mut Vec<String>) {
     if update.full {
       self.asks.clear();
       self.bids.clear();
@@ -57,7 +59,10 @@ impl OrderBook {
     for (price, qty) in update.bids.iter() {
       let key = Reverse(*price);
       if qty.eq(&zero) {
-        self.bids.remove(&key);
+        let result = self.bids.remove(&key);
+        if result.is_none() {
+          updates.push(format!("Removal BID {} failed", price))
+        }
       } else {
         self.bids.insert(key, *qty);
       }
@@ -65,7 +70,10 @@ impl OrderBook {
 
     for (price, qty) in update.asks.iter() {
       if qty.eq(&zero) {
-        self.asks.remove(price);
+        let result = self.asks.remove(price);
+        if result.is_none() {
+          updates.push(format!("Removal ASK {} failed", price))
+        }
       } else {
         self.asks.insert(*price, *qty);
       }

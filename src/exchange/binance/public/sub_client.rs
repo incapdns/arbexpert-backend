@@ -146,7 +146,7 @@ impl BinanceSubClient {
     };
 
     let broadcast_update = |book: SharedBook, update: OrderBookUpdate| -> Option<()> {
-      book.borrow_mut().apply_update(&update);
+      book.borrow_mut().apply_update(&update, &mut vec![]);
       let subscriptions = mem::take(shared.pending.borrow_mut().get_mut(symbol)?);
       for sub in subscriptions {
         let _ = sub.send(book.clone());
@@ -198,7 +198,7 @@ impl BinanceSubClient {
       book_bm.asks = snapshot.asks;
       book_bm.bids = snapshot.bids;
       for update in processed {
-        book_bm.apply_update(&update);
+        book_bm.apply_update(&update, &mut vec![]);
       }
     } else if update_id == 1 {
       init.borrow_mut().get_mut(symbol)?.push(build_update()?);

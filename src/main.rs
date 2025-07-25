@@ -40,6 +40,8 @@ use std::{
   },
   vec,
 };
+use std::sync::LazyLock;
+use compio::buf::IoBuf;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -51,17 +53,25 @@ pub mod test;
 pub mod utils;
 pub mod worker;
 
-// static mut BREAKPOINT: Option<String> = None;
+static BREAKPOINT: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+static TEMP: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
-// #[allow(static_mut_refs)]
-// #[web::post("/breakpoint/{symbol}")]
-// async fn breakpoint(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
-//   unsafe {
-//     BREAKPOINT.replace(symbol.to_string());
-//   }
+#[web::get("/temp")]
+async fn temp(_: HttpRequest) -> HttpResponse {
+  let mut bp = TEMP.lock().unwrap();
+  if let Some(temp) = bp.as_mut() {
+    return HttpResponse::Ok().body(format!("{}", temp))
+  }
 
-//   HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
-// }
+  HttpResponse::Ok().body("Empty".to_string())
+}
+
+#[web::post("/breakpoint/{symbol}")]
+async fn breakpoint(_: HttpRequest, symbol: web::types::Path<String>) -> HttpResponse {
+  let mut bp = BREAKPOINT.lock().unwrap();
+  *bp = Some(symbol.to_string());
+  HttpResponse::Ok().body(format!("Breakpoint Symbol: {:?}", symbol))
+}
 
 #[web::post("/arbitrage/{symbol}/start")]
 async fn start_arbitrage(
@@ -167,6 +177,7 @@ pub struct ArbitrageSnaphot {
   pub future_ask: Decimal,
   //#[serde(skip)]
   pub future_bid: Decimal,
+  pub future_bid_qty: Decimal,
   pub entry_percent: Decimal,
   pub exit_percent: Decimal,
 }
@@ -180,6 +191,7 @@ impl Default for ArbitrageSnaphot {
       spot_bid: dec!(0),
       future_ask: dec!(0),
       future_bid: dec!(0),
+      future_bid_qty: dec!(0),
       entry_percent: dec!(0),
       exit_percent: dec!(0),
     }
@@ -424,6 +436,10 @@ async fn ws_service(
   Ok(service)
 }
 
+fn test() -> i32 {
+  123
+}
+
 async fn ws_index(
   req: web::HttpRequest,
   state: web::types::State<Arc<GlobalState>>,
@@ -444,7 +460,7 @@ async fn main() -> std::io::Result<()> {
     .install_default()
     .expect("Failed to install default CryptoProvider");
 
-  let addr: SocketAddr = "0.0.0.0:80".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:1000".parse().unwrap();
   let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
   socket.set_reuse_address(true)?;
 
@@ -481,8 +497,6 @@ async fn main() -> std::io::Result<()> {
 
   let worker_global_state = global_state.clone();
 
-  test::test();
-
   Server::build()
     .workers(num_cpus::get())
     .on_worker_start(move || on_worker_start(worker_global_state.clone()))
@@ -515,16 +529,9 @@ async fn main() -> std::io::Result<()> {
             list_arbitrage,
             monitor_futures_orderbook,
             monitor_spot_orderbook,
-            //breakpoint,
+            breakpoint,
+            temp
           ))
-          .service(
-            web::resource("/resource2/index.html")
-              .wrap(ntex::util::timeout::Timeout::new(ntex::time::Millis(5000)))
-              .wrap(middleware::DefaultHeaders::new().header("X-Version-R2", "0.3"))
-              .default_service(web::route().to(|| async { HttpResponse::MethodNotAllowed() }))
-              .route(web::get().to(index_async)),
-          )
-          .service(web::resource("/test1.html").to(|| async { "Test\r\n" })),
       )
     })?
     .run()

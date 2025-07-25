@@ -611,7 +611,7 @@ doc! {macro_rules! select {
         #[doc(hidden)]
         mod __tokio_select_util {
             // Generate an enum with one variant per select branch
-            tokio_macros::select_priv_declare_output_enum!( ( $($count)* ) );
+            $crate::tokio_macros::select_priv_declare_output_enum!( ( $($count)* ) );
         }
 
         // `tokio::macros::support` is a public, but doc(hidden) module
@@ -723,7 +723,7 @@ doc! {macro_rules! select {
                                 #[allow(unused_variables)]
                                 #[allow(unused_mut)]
                                 match &out {
-                                    tokio_macros::select_priv_clean_pattern!($bind) => {}
+                                    $crate::tokio_macros::select_priv_clean_pattern!($bind) => {}
                                     _ => continue,
                                 }
 

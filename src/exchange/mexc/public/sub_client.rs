@@ -67,7 +67,7 @@ impl SubClient {
           full: false
         };
 
-        book.apply_update(&update);
+        book.apply_update(&update, &mut vec![]);
       }
     }
 

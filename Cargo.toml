@@ -4,19 +4,14 @@ version = "1.0.0"
 edition = "2024"
 
 [dependencies]
-async-tungstenite = "0.30.0"
-async-tls = "0.13.0"
-futures-io = "0.3.31"
 rustls = { version = "0.23.29", default-features = false, features = ["std", "aws_lc_rs"] }
 webpki-roots = "1.0.1"
 url = "2.5.4"
 serde = { version = "1.0.219", features = ["derive"] }
 hmac = "0.12.1"
 sha2 = "0.10.9"
-base64 = "0.22.1"
 hex = "0.4.3"
 serde_json = "1.0.141"
-chrono = "0.4.41"
 thiserror = "2.0.12"
 compio = { version = "0.15.0", features = ["all"] }
 ntex = { version = "2.15.0", features = ["compio", "compress", "coo-kie", "cookie", "default", "rustls", "tls-rustls", "url", "url-pkg", "webpki-roots", "ws"] }
@@ -24,14 +19,10 @@ socket2 = { version = "0.6.0", features = ["all"] }
 num_cpus = "1.17.0"
 downcast-rs = "2.0.1"
 prost = "0.14.1"
-prost-types = "0.14.1"
 rust_decimal = { version = "1.37.2", features = ["macros", "serde"] }
 async-channel = "2.5.0"
 futures = "0.3.31"
-send_wrapper = "0.6.0"
 once_cell = "1.21.3"
-env_logger = "0.11.8"
-spin = "0.10.0"
 mimalloc = "0.1.47"
 async-broadcast = "0.7.2"
 async-trait = "0.1.88"
@@ -39,10 +30,7 @@ ntex-cors = "2.1.0"
 atomic = { version = "0.6.1", features = ["std"] }
 bytemuck = { version = "1.21.1", features = ["derive"] }
 ratelimit = { version = "0.10.0", path = "dependencies/ratelimit" }
-quote = "1.0.40"
-tokio-macros = { version = "~2.5.0", path = "dependencies/tokio-macros" }
 macros = { version = "~2.5.0", path = "dependencies/macros" }
-rand = "0.9.2"
 arc-swap = "1.7.1"
 
 [build-dependencies]
@@ -55,6 +43,9 @@ codegen-units = 1      # Compila tudo de uma vez (melhor otimização, pior temp
 panic = "abort"        # Remove rastreamento de stack em panics = binário menor
 strip = true           # Remove símbolos e metadados para produção (Rust 1.74+)
 inline-threshold = 100 # Permite mais inlining de funções. Útil se seu projeto tem muitas chamadas pequenas.
-
-# Para CPU específico (via RUSTFLAGS):
 debug = false
+
+[profile.dev]
+opt-level = 0
+debug = "full"
+split-debuginfo = "off"
