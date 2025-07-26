@@ -30,10 +30,10 @@ use rust_decimal::prelude::Zero;
 
 type Init = Rc<RefCell<HashMap<String, Vec<OrderBookUpdate>>>>;
 type Backup = Rc<RefCell<HashMap<String, Vec<String>>>>;
-type HistoryBids = Rc<RefCell<HashSet<Decimal>>>;
+type HistoryBids = Rc<RefCell<HashMap<String, HashSet<Decimal>>>>;
 
 pub struct GateSubClient {
-  base: SubClient,
+  base: SubClient
 }
 
 #[derive(Debug, Deserialize)]
@@ -230,16 +230,17 @@ impl GateSubClient {
         }
 
         let mut history_bm = history_bids.borrow_mut();
+        let history = history_bm.entry(symbol.to_string()).or_default();
         for (price, qty) in &update.bids {
           if qty.eq(&Decimal::ZERO) {
-            history_bm.remove(&price);
+            history.remove(price);
           } else {
-            history_bm.insert(*price);
+            history.insert(*price);
           }
         }
 
         for (r_bid, _) in book.borrow().bids.iter() {
-          if history_bm.get(&r_bid.0).is_none() {
+          if history.get(&r_bid.0).is_none() {
             panic!("Error in BID price {:?}", r_bid);
           }
         }
@@ -303,9 +304,10 @@ impl GateSubClient {
       book_bm.update_id = snapshot.update_id;
 
       let mut history_bm = history_bids.borrow_mut();
+      let history = history_bm.entry(symbol.to_string()).or_default();
 
       for (r_price, _) in &book_bm.bids {
-        history_bm.insert(r_price.0.clone());
+        history.insert(r_price.0.clone());
       }
 
       let mut backup_bm = backup.borrow_mut();
@@ -323,9 +325,9 @@ impl GateSubClient {
         book_bm.apply_update(&update, &mut updates);
         for (price, qty) in &update.bids {
           if qty.eq(&Decimal::ZERO) {
-            history_bm.remove(&price);
+            history.remove(price);
           } else {
-            history_bm.insert(*price);
+            history.insert(*price);
           }
         }
       }
@@ -363,16 +365,12 @@ impl GateSubClient {
     };
 
     let init = Init::default();
+    let backup = Backup::default();
+    let history = HistoryBids::default();
 
     let (ic1, ic2) = (init.clone(), init);
-
     let market_cl = market.clone();
-
     let (m1, m2) = (market_cl.clone(), market_cl);
-
-    let backup = Backup::default();
-
-    let history_bids = HistoryBids::default();
 
     let now = SystemTime::now()
       .duration_since(UNIX_EPOCH)
@@ -399,7 +397,7 @@ impl GateSubClient {
           let utils = utils.clone();
           let market = market.clone();
           let backup = backup.clone();
-          let history_bids = history_bids.clone();
+          let history_bids = history.clone();
           async move {
             Self::handle_message(&text, shared, backup, history_bids, ic1, utils, market).await;
           }
